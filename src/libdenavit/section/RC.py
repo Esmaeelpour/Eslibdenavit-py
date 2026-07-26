@@ -375,6 +375,12 @@ class RC:
                 max_strain = strain
         return max_strain
 
+    def maximum_tensile_strain(self, axial_strain, curvatureX=0, curvatureY=0):
+        """Alias for maximum_tensile_steel_strain, so generic code can call a
+        common method name across section types without needing to know
+        which material-specific name a given section class uses."""
+        return self.maximum_tensile_steel_strain(axial_strain, curvatureX, curvatureY)
+
     def Ig(self, axis):
         return self.conc_cross_section.I(axis)
 
