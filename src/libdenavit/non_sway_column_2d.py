@@ -12,9 +12,9 @@ from libdenavit.analysis_helpers import try_analysis_options, ops_get_section_st
 from libdenavit.column_2d import Column2d
 import logging
 
+logger = logging.getLogger(__name__)
 
-logging.basicConfig(level=logging.DEBUG)
-# logging.basicConfig(level=logging.INFO)
+
 class NonSwayColumn2d(Column2d):
     def __init__(self, section, length, et, eb, **kwargs):
         """
@@ -108,7 +108,7 @@ class NonSwayColumn2d(Column2d):
         for attr in ['applied_moment_top', 'applied_moment_bot']:
             setattr(results, attr, [])
         return results
-
+    
 
     def _set_limit_point_values(self, results, ind, x):
         """Override to include moment values."""
@@ -199,7 +199,7 @@ class NonSwayColumn2d(Column2d):
 
             if plot_load_deformation:
                 if iP==0:
-                    print(f'{results.maximum_abs_moment=}')
+                    logger.debug(f'{results.maximum_abs_moment=}')
                 else:
                     ax_at_step[0].plot(results.maximum_abs_disp, results.applied_moment_top, '-o', label=f'{iP:,.0f}', markersize=5)
                     ax_at_step[0].legend()
@@ -744,10 +744,12 @@ class NonSwayColumn2d(Column2d):
                 # Redirect stderr to nowhere
                 sys.stderr = io.StringIO()
                 time = ops.getLoadFactor(200) + ops.getLoadFactor(2000)
-            except:
+            except Exception as e:
+                logger.warning(f'Failed to get combined load factor: {e}')
                 try:
                     time = ops.getLoadFactor(200)
-                except:
+                except Exception as e:
+                    logger.warning(f'Failed to get load factor for pattern 200: {e}')
                     time = 0
             finally:
                 # Restore stderr
@@ -831,13 +833,13 @@ class NonSwayColumn2d(Column2d):
 
                     
                     if ok < 0:
-                        print(f'Analysis failed before full sustained load is reached, load: {i/load_step_for_sustained*self.P_sus}')
+                        logger.warning(f'Analysis failed before full sustained load is reached, load: {i/load_step_for_sustained*self.P_sus}')
                         results.exit_message = 'Analysis failed before full sustained load is reached'
                         return results
 
                     if config['deformation_limit'] is not None:
                         if results.maximum_abs_disp[-1] > config['deformation_limit']:
-                            print(f'Analysis failed before full sustained load is reached, load: {i/load_step_for_sustained*self.P_sus}')
+                            logger.warning(f'Analysis failed before full sustained load is reached, load: {i/load_step_for_sustained*self.P_sus}')
                             results.exit_message = 'Analysis failed before full sustained load is reached'
                             return results
 
@@ -894,23 +896,23 @@ class NonSwayColumn2d(Column2d):
             
             if ok < 0:
                 if t == self.section.Tcr:
-                    print(f'Analysis failed on the first step of maintaining sustained load')
+                    logger.warning('Analysis failed on the first step of maintaining sustained load')
                     results.exit_message = 'Analysis failed on the first step of maintaining sustained load'
                     return results
                 else:
-                    print(f'Analysis failed while maintaining sustained load, time: {t}')
+                    logger.warning(f'Analysis failed while maintaining sustained load, time: {t}')
                     results.exit_message = f'Analysis failed while maintaining sustained load: {t}'
                 return results
 
             if config['deformation_limit'] is not None:
                 if results.maximum_abs_disp[-1] > config['deformation_limit']:
-                    print(f'Analysis failed while maintaining sustained load: {t}')
+                    logger.warning(f'Analysis failed while maintaining sustained load: {t}')
                     results.exit_message = 'Deformation Limit Reached'
                     return results
             
             if config['eigenvalue_limit'] is not None:
                 if results.lowest_eigenvalue[-1] < config['eigenvalue_limit']:
-                    print(f'Analysis failed while maintaining sustained load: {t}')
+                    logger.warning(f'Analysis failed while maintaining sustained load: {t}')
                     results.exit_message = 'Eigenvalue Limit Reached'
                     return results
 
@@ -1375,22 +1377,22 @@ class NonSwayColumn2d(Column2d):
                     M_i = abs(forces[2])  # Moment at i-end
                     M_j = abs(forces[5])  # Moment at j-end
                     max_M = max(max_M, M_i, M_j)
-                except Exception:
+                except Exception as e:
                     # eleForce might fail if element is not fully formed, skip
-                    pass
+                    logger.debug(f'eleForce failed for element {i}, skipping: {e}')
 
             # Get maximum displacement
             max_disp = 0
             for i in range(self.ops_n_elem + 1):
                 disp = abs(ops.nodeDisp(i, 1))
                 max_disp = max(max_disp, disp)
-            
+
             results.maximum_abs_moment.append(max_M)
             results.maximum_abs_disp.append(max_disp)
             try:
                 results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
-            except Exception:
-                raise RuntimeError('Eigenvalue extraction failed during recording.')
+            except Exception as e:
+                raise RuntimeError('Eigenvalue extraction failed during recording.') from e
         #endregion
         
         
@@ -1496,12 +1498,13 @@ class NonSwayColumn2d(Column2d):
                 if M_check > 1e-6 and P_check > 1e-6:
                     try:
                         M_boundary = section_interaction.find_x_given_y(P_check, 'pos')
-                        logging.debug(f'M_boundary: {M_boundary}, M_check: {M_check}\n')
+                        logger.debug(f'M_boundary: {M_boundary}, M_check: {M_check}')
                         if M_check > M_boundary:
                             results.exit_message = 'Material Strength Limit Reached'
                             break
-                    except:
+                    except Exception as e:
                         # If find_x_given_y fails, the point is outside the valid range
+                        logger.debug(f'find_x_given_y failed, treating point as outside the valid range: {e}')
                         results.exit_message = 'Material Strength Limit Reached'
                         break
 
@@ -1687,8 +1690,9 @@ class NonSwayColumn2d(Column2d):
                             if M_check > M_boundary:
                                 results.exit_message = 'Material Strength Limit Reached'
                                 break
-                        except:
+                        except Exception as e:
                             # If find_x_given_y fails, the point is outside the valid range
+                            logger.debug(f'find_x_given_y failed, treating point as outside the valid range: {e}')
                             results.exit_message = 'Material Strength Limit Reached'
                             break
                     
@@ -1724,12 +1728,12 @@ class NonSwayColumn2d(Column2d):
         #endregion
         
         
-        logging.debug(f'Applied axial loads: {results.applied_axial_load}\n')
-        logging.debug(f'Applied top moments: {results.applied_moment_top}\n')
-        logging.debug(f'Applied bottom moments: {results.applied_moment_bot}\n')
-        logging.debug(f'Maximum absolute moments: {results.maximum_abs_moment}\n')
-        logging.debug(f'Maximum absolute displacements: {results.maximum_abs_disp}\n')
-        logging.debug(f'et: {self.et}, eb: {self.eb}, e: {e}, ecc_sign: {ecc_sign}\n')
+        logger.debug(f'Applied axial loads: {results.applied_axial_load}')
+        logger.debug(f'Applied top moments: {results.applied_moment_top}')
+        logger.debug(f'Applied bottom moments: {results.applied_moment_bot}')
+        logger.debug(f'Maximum absolute moments: {results.maximum_abs_moment}')
+        logger.debug(f'Maximum absolute displacements: {results.maximum_abs_disp}')
+        logger.debug(f'et: {self.et}, eb: {self.eb}, e: {e}, ecc_sign: {ecc_sign}')
         
         
         #region Find limit point
@@ -1750,21 +1754,22 @@ class NonSwayColumn2d(Column2d):
         #endregion
         
         
-        logging.debug(f'Exit message: {results.exit_message}\n')
-              
+        logger.debug(f'Exit message: {results.exit_message}')
+
         #region Add logic for new Material Strength limit
         if 'Material Strength' in results.exit_message:
-            logging.debug('Finding limit point at Material Strength limit...\n')
-            logging.debug(f'P = {P_check}, M_check = {M_check}\n')
+            logger.debug('Finding limit point at Material Strength limit...')
+            logger.debug(f'P = {P_check}, M_check = {M_check}')
             try:
                 M_check_result = section_interaction.find_x_given_y(P_check, 'pos')
                 M_check = M_check_result[0] if isinstance(M_check_result, list) else M_check_result
-            except:
+            except Exception as exc:
                 if e==0 or (abs(self.et) < 1e-12 and abs(self.eb) < 1e-12):
+                    logger.debug(f'find_x_given_y failed for axial-only case, defaulting M_check to 0: {exc}')
                     M_check = 0.0
                 else:
-                    raise RuntimeError('Failed to find M boundary for Material Strength limit point.')
-            logging.debug(f'At material strength limit: P = {P_check}, M_boundary = {M_check}\n')
+                    raise RuntimeError('Failed to find M boundary for Material Strength limit point.') from exc
+            logger.debug(f'At material strength limit: P = {P_check}, M_boundary = {M_check}')
             ind, x = find_limit_point_in_list(results.maximum_abs_moment, M_check)
             if x == 0:
                 ind, x = find_limit_point_in_list(results.applied_axial_load, P_check)
