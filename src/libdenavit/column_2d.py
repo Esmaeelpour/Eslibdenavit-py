@@ -112,8 +112,20 @@ class Column2d:
     def run_ops_analysis(self, analysis_type, **kwargs):
         """Template method for running OpenSees analysis."""
         config = self._extract_analysis_config(**kwargs)
-        
-        self.build_ops_model(config['section_id'], config['section_args'], config['section_kwargs'], 
+
+        if (analysis_type.lower() == 'proportional_limit_point' and config['e'] == 0
+                and not self.dxo and not getattr(self, 'Dxo', 0)):
+            warnings.warn(
+                'Running a proportional_limit_point analysis with e=0 (axial-only loading) and '
+                'no initial geometric imperfection (dxo=0, and Dxo=0 if applicable): the model is '
+                'perfectly symmetric, so there is nothing to trigger a second-order (buckling) '
+                'response and the analysis may fail to converge. If you intend to capture buckling '
+                'behavior, pass a nonzero dxo (e.g. dxo=length/1000) when constructing the column -- '
+                'or, for a SwayColumn2d, a nonzero Dxo, since dxo alone is zero at the sway-controlled '
+                'top node.'
+            )
+
+        self.build_ops_model(config['section_id'], config['section_args'], config['section_kwargs'],
                             creep_props_dict=config['creep_props_dict'],
                             shrinkage_props_dict=config['shrinkage_props_dict'])
         
