@@ -901,10 +901,16 @@ class RC:
 
             if self.reinforcement[0].xc != 0 or self.reinforcement[0].yc != 0:
                 raise ValueError(f"Reinforcing pattern must be centered")
-            if self.dbt is None:
-                raise ValueError("dbt must be defined")
-            if self.s is None:
-                raise ValueError("s must be defined")
+
+        def validate_confinement_reinf(self):
+            if self.dbt is None or self.s is None:
+                raise ValueError(
+                    f"conc_mat_type='{conc_mat_type}' models confined concrete and requires transverse "
+                    f"reinforcement to be defined on the RC section (dbt = transverse bar diameter, "
+                    f"s = spacing) to compute the confinement effect. "
+                    f"Set them via RC(..., dbt=<value>, s=<value>), or use a '_no_confinement' "
+                    f"conc_mat_type, which does not require transverse reinforcement."
+                )
 
         confinement = False
 
@@ -916,6 +922,7 @@ class RC:
             '''
 
             validate_section_reinf(self)
+            validate_confinement_reinf(self)
 
             fcc, eps_prime_cc = self.confined_concrete_props()
 
@@ -926,16 +933,17 @@ class RC:
         elif conc_mat_type == "Concrete04_no_confinement":
             validate_section_reinf(self)
             ops.uniaxialMaterial("Concrete04", concrete_material_id, -self.fc, -self.eps_c, -1.0, self.Ec)
-        
+
         elif conc_mat_type == "Concrete02":
             validate_section_reinf(self)
-            
+            validate_confinement_reinf(self)
+
             fcc, eps_prime_cc = self.confined_concrete_props()
-            
+
             ops.uniaxialMaterial('Concrete02', cover_concrete_material_id, -self.fc, -self.eps_c, -self.fc/1.5, -0.01)
             ops.uniaxialMaterial('Concrete02', core_concrete_material_id, -fcc, -eps_prime_cc, -fcc/1.5, -0.01)
             confinement = True
-        
+
         elif conc_mat_type == "Concrete02_no_confinement":
             validate_section_reinf(self)
             ops.uniaxialMaterial('Concrete02', concrete_material_id, -self.fc, -self.eps_c, -self.fc/1.5, -0.01)
