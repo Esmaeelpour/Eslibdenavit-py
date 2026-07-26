@@ -565,23 +565,6 @@ class NonSwayColumn2d(Column2d):
                 ops.element(self.ops_element_type, index, index, index + 1, 100, 1)
 
 
-    def _set_limit_point_values(self, results, ind, x):
-        """Override to include moment values."""
-        super()._set_limit_point_values(results, ind, x)
-        results.applied_moment_top_at_limit_point = interpolate_list(results.applied_moment_top, ind, x)
-        results.applied_moment_bot_at_limit_point = interpolate_list(results.applied_moment_bot, ind, x)
-
-    
-    def _initialize_results(self):
-        """Initialize analysis results object with required attributes."""
-        # Get base attributes and add NonSway-specific ones
-        results = super()._initialize_results()
-        # Add NonSway-specific attributes
-        for attr in ['applied_moment_top', 'applied_moment_bot']:
-            setattr(results, attr, [])
-        return results
-
-
     def _run_ops_proportional_no_creep(self, config, results):
         """Run proportional limit point analysis without creep."""
         # time = LFV
@@ -791,34 +774,13 @@ class NonSwayColumn2d(Column2d):
                 raise ValueError(f'The value of axis ({self.axis}) is not supported.')
         # endregion
 
-        # region Do one analysis with no load
-        # ops.setCreep(1)
-        # ops.setTime(self.section.Tcr)
-        
-        # ops.timeSeries('Constant', 1)
-        # ops.pattern('Plain', 1, 1)
-
-        # ops.integrator('LoadControl', 0)
-        # ops.system('Umfpack')
-        # ops.test('NormUnbalance', 1e-8, 20)
-        # ops.algorithm('NewtonLineSearch')
-        # ops.constraints('Plain')
-        # ops.numberer('RCM')
-        # ops.analysis('Static')
-        
-        # ok = ops.analyze(1)
-        # record()
-        # endregion
-
-
         # region Run the sustained load phase
         load_step_for_sustained = 1000
-        
+
         ops.setCreep(0)
         ops.setTime(0)
         ops.wipeAnalysis()
         ops.system('Umfpack')
-        # ops.test('NormUnbalance', 1e-3, 200)
         ops.test('EnergyIncr', 1e-4, 100, 0, 2)
         ops.algorithm('NewtonLineSearch', '-maxIter', 50, '-maxEta ', 1)
         ops.constraints('Plain')
@@ -833,9 +795,6 @@ class NonSwayColumn2d(Column2d):
         ops.pattern('Plain', 200, 100, '-factor', 1)
         ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
         ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
-        
-        time_in_longterm_analysis = []
-        deformation_in_longterm_analysis = []
         
         while t < tfinish:
             # Apply sustained load at Tcr
@@ -872,21 +831,12 @@ class NonSwayColumn2d(Column2d):
                 ops.algorithm('NewtonLineSearch')
                 ops.integrator('LoadControl', 0)
                 ops.analysis('Static')
-                
-                # post_creep = ops.analyze(1)
-            
-            
+
             ops.setTime(t)
-            
+
             ok = ops.analyze(1)
-            # ok = ops.analyze(1)
-            
-            # if t == self.section.Tcr and ok < 0:
-                # ok = ops.analyze(1)
-            
+
             record()
-            
-            ops_get_maximum_abs_disp
             
             results.time_in_longterm_analysis.append(ops.getTime())
             results.deformation_in_longterm_analysis.append(ops_get_maximum_abs_disp(self))
@@ -994,17 +944,10 @@ class NonSwayColumn2d(Column2d):
             ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
             ops.integrator('DisplacementControl', self.ops_mid_node, 1, dU)
-            
-            # dF = self.P_sus / num_steps_vertical
-            # ops.load(self.ops_n_elem, 0, -1, 0)
-            # ops.load(0, 0, 0, 0)
-            # ops.integrator('LoadControl', dF)
-        
-        
+
         ops.constraints('Plain')
         ops.numberer('RCM')
         ops.system('UmfPack')
-        # ops.test('NormUnbalance', 1e-3, 50)
         ops.test('EnergyIncr', 1e-4, 100, 0, 2)
         ops.algorithm('ModifiedNewton')
         ops.analysis('Static', '-noWarnings')
@@ -1492,14 +1435,7 @@ class NonSwayColumn2d(Column2d):
                     break
                 
                 P_check = results.applied_axial_load[-1]
-                M_check = results.maximum_abs_moment[-1]
-                
-                # if logging.getLogger().isEnabledFor(logging.DEBUG):
-                #     section_interaction.plot()
-                #     import matplotlib.pyplot as plt
-                #     plt.plot(M_check, P_check, 'ro')
-                #     plt.show(block=True)
-                    
+                M_check = results.maximum_abs_moment[-1]                    
                 
                 # Check P against P_max_material first
                 if P_check > P_max_material:
@@ -1633,7 +1569,6 @@ class NonSwayColumn2d(Column2d):
                 
                 ops.test('NormUnbalance', 1e-6, 100)  # tolerance, max iterations
                 ops.algorithm('Newton')
-                # ops.integrator('MinUnbalDispNorm', dU*1000)
                 ops.integrator('LoadControl', 1)
                 ops.analysis('Static')
                 
@@ -1659,11 +1594,7 @@ class NonSwayColumn2d(Column2d):
                 step_count = 0
                 M_check = 0.0
                 P_check = P
-                
-                print('Starting lateral loading analysis...\n')
-                import matplotlib.pyplot as plt
-                plt.pause(5)
-                
+
                 while step_count < max_steps:
                     ok = ops.analyze(1)
                     step_count += 1
@@ -1722,9 +1653,6 @@ class NonSwayColumn2d(Column2d):
                             results.exit_message = 'Deformation Limit Reached'
                             break
                     
-                    import matplotlib.pyplot as plt
-                    print('M_check:', M_check)
-                    plt.pause(10)
                     if max_1_4_Mu_limit:
                         # Check for 1/4 Mu limit
                         if self.et == 0 and self.eb == 0:
@@ -1848,67 +1776,56 @@ class NonSwayColumn2d(Column2d):
         prop_disp_incr_factor = kwargs.get('prop_disp_incr_factor', 1e-6)
         nonprop_disp_incr_factor = kwargs.get('nonprop_disp_incr_factor', 1e-5)
         section_factored = kwargs.get('section_factored', False)
-        e = kwargs.get('e', 1.0) 
+        e = kwargs.get('e', 1.0)
         # 1. Get Elastic Buckling Load (P_cr_elastic)
-        print('Running proportional analysis for elastic buckling load...')
+        logger.debug('Running proportional analysis for elastic buckling load...')
         results_pcr = self.run_aci_elastic_second_order_analysis(
             'proportional_limit_point',
             e=0,
             section_id=section_id,
             disp_incr_factor=prop_disp_incr_factor)
-        
+
         P_cr_elastic = results_pcr.applied_axial_load_at_limit_point
-        print(f'  P_cr_elastic = {P_cr_elastic:.2f}')
-        
+        logger.debug(f'  P_cr_elastic = {P_cr_elastic:.2f}')
+
         # 2. Get Material P-M Diagram (for P_max_material and M_n_material)
         P_sect, M_sect, _ = self.section.section_interaction_2d(self.axis, 100, factored=section_factored,
                                                                 only_compressive=True)
         section_interaction = InteractionDiagram2d(M_sect, P_sect, is_closed=False)
         P_max_material = np.max(P_sect)
-        
+
         # Find pure bending strength (Mn)
         idx_zero = np.argmin(np.abs(P_sect))
         M_n_material = M_sect[idx_zero]
-        print(f'  P_max_material = {P_max_material:.2f}')
-        print(f'  M_n_material = {M_n_material:.2f}')
+        logger.debug(f'  P_max_material = {P_max_material:.2f}')
+        logger.debug(f'  M_n_material = {M_n_material:.2f}')
 
-        # 3. Determine the starting P (the lower of the two, with a small buffer)
-        # FIXED: Subtract small buffer to ensure we're inside the interaction diagram
+        # 3. Determine the starting P (the lower of the two, with a small buffer to stay inside the interaction diagram)
         P_start = min(P_cr_elastic, P_max_material) * 0.999  # 0.1% buffer
-        print(f'Starting axial load for interaction diagram: P_start = {P_start:.2f}')
+        logger.debug(f'Starting axial load for interaction diagram: P_start = {P_start:.2f}')
 
         # Initialize results list with the first point (axial-only loading)
         P = [P_start]
         M1 = [0]
         M2 = [section_interaction.find_x_given_y(P_start, 'pos')]
-        # M2 = [0]
         exit_message = [results_pcr.exit_message]
-        
+
         if np.isnan(P[0]):
             raise ValueError('Analysis failed at axial-only loading')
-        
+
         # 4. Loop through axial loads - SIMPLIFIED: No optimization
-        print(f'\nGenerating {num_points} points on interaction diagram...')
+        logger.debug(f'Generating {num_points} points on interaction diagram...')
         for i in range(1, num_points):
             # Iterate from P_start down to 0
             iP = P_start * (num_points - 1 - i) / (num_points - 1)
-            # print(f'\nPoint {i+1}/{num_points}: P = {iP:.2f}')
-            
+
             if iP < 1e-6:
                 # Pure bending case (P ≈ 0)
-                print('  Pure bending case')
                 P.append(0)
                 M1.append(M_n_material)
                 M2.append(M_n_material)
                 exit_message.append('Pure Bending (Material Strength)')
             else:
-                # SIMPLIFIED: Just pick a reasonable starting eccentricity
-                # No optimization - run the analysis once and record what we get
-                
-                
-                # Option 2: Use fraction of material capacity (uncomment to use)
-                # M_material = section_interaction.find_x_given_y(iP, 'pos')
-                
                 # Run the analysis ONCE - no iteration
                 results = self.run_aci_elastic_second_order_analysis(
                     'nonproportional_limit_point',
@@ -1917,21 +1834,15 @@ class NonSwayColumn2d(Column2d):
                     section_id=section_id,
                     disp_incr_factor=nonprop_disp_incr_factor
                 )
-                
+
                 # Record whatever we got at the limit point
                 P.append(iP)
                 M1.append(results.applied_moment_top_at_limit_point)
                 M2.append(results.maximum_abs_moment_at_limit_point)
                 exit_message.append(results.exit_message)
-                
-                # print(f'  → M1 = {M1[-1]:.1f}')
-                # print(f'  → M2 = {M2[-1]:.1f}')
-                # print(f'  → Exit: {exit_message[-1]}')
-        
-        print('\n' + '='*70)
-        print('Interaction diagram generation complete!')
-        print('='*70)
-        
+
+        logger.debug('Interaction diagram generation complete!')
+
         return {
             'P': np.array(P),
             'M1': np.array(M1),
