@@ -122,7 +122,7 @@ class SwayColumn2d(Column2d):
             ops.fix(0, 1, 1, 1)
         elif self.k_bot == 0:
             ops.fix(0, 1, 1, 0)
-        elif type(self.k_bot) in [int, float]:
+        elif isinstance(self.k_bot, (int, float)):
             ops.fix(0, 1, 1, 0)
             ops.node(1000, 0, 0)
             ops.fix(1000, 1, 1, 1)
@@ -133,7 +133,7 @@ class SwayColumn2d(Column2d):
 
         if self.k_top == inf:
             ops.fix(self.ops_n_elem, 0, 0, 1)
-        elif type(self.k_bot) in [int, float]:
+        elif isinstance(self.k_bot, (int, float)):
             ops.node(1001, self.Dxo, self.length)
             ops.fix(1001, 1, 1, 1)
             ops.uniaxialMaterial('Elastic', 1001, self.k_top)
