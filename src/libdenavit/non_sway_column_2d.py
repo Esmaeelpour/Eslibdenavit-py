@@ -405,11 +405,20 @@ class NonSwayColumn2d(Column2d):
             M2 = np.interp(P, np.flip(P_list), np.flip(M2_ops))
             M2_list.append(M2)
 
-            if M1 > M2:
+            if M1 == 0 or M1 > M2:
+                # M1 == 0 (e.g. the axial-only point): no applied moment to back-calculate
+                # EI from, so delta = M2 / M1 is undefined rather than just large.
                 EI_list_ops.append(float("nan"))
                 continue
 
             delta = M2 / M1
+            if self.Cm / delta == 1:
+                # e.g. the pure-bending point (P=0, M1==M2==delta==1) combined with Cm==1
+                # (uniform moment / single curvature): the moment-magnification denominator
+                # (1 - Cm/delta) is exactly zero, so Pc is undefined here.
+                EI_list_ops.append(float("nan"))
+                continue
+
             Pc = P / (1-self.Cm/delta) / Pc_factor
             k = 1  # Effective length factor (always one for this non-sway column)
             EI = Pc * (k * self.length / pi) ** 2
@@ -452,15 +461,20 @@ class NonSwayColumn2d(Column2d):
             M2 = np.interp(P, np.flip(P_design), np.flip(M2_design))
             M2_list.append(M2)
 
-            if P < min(P_design) or P > max(P_design) or M1 > M2:
+            if P < min(P_design) or P > max(P_design) or M1 == 0 or M1 > M2:
+                # M1 == 0 (e.g. the axial-only point): no applied moment to back-calculate
+                # EI from, so delta = M2 / M1 is undefined rather than just large.
                 EI_list_AASHTO.append(float("nan"))
                 continue
 
-            if M1>M2:
-                EI_list_AASHTO.append(EIgross)
+            delta = M2 / M1
+            if self.Cm / delta == 1:
+                # e.g. the pure-bending point (P=0, M1==M2==delta==1) combined with Cm==1
+                # (uniform moment / single curvature): the moment-magnification denominator
+                # (1 - Cm/delta) is exactly zero, so Pc is undefined here.
+                EI_list_AASHTO.append(float("nan"))
                 continue
 
-            delta = M2 / M1
             Pc = P / (1 - self.Cm / delta) / Pc_factor
             k = 1  # Effective length factor (always one for this non-sway column)
             EI = Pc * (k * self.length / pi) ** 2
