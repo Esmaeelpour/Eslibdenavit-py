@@ -75,6 +75,14 @@ class NonSwayColumn2d(Column2d):
         return 15 + 0.03 * h  # mm
 
 
+    def _aci_first_order_moment(self, M_top, M_bot, P):
+        """
+        First-order moment for the ACI 6.2.5.3 1.4 check (M2/M1 <= 1.4).
+        """
+        applied = max(abs(M_top), abs(M_bot))
+        return max(applied, abs(P) * self._aci_minimum_eccentricity)
+
+
     def _apply_aci_minimum_eccentricity(self, et, eb):
         """Raise the dominant end eccentricity to the ACI 318-19 minimum."""
         e_min = self._aci_minimum_eccentricity
@@ -1482,14 +1490,15 @@ class NonSwayColumn2d(Column2d):
                         results.exit_message = 'Eigenvalue Limit Reached'
                         break
                 
-                if max_1_4_Mu_limit is True:
-                    if (e != 0 or (abs(et) > 1e-12 and abs(eb) > 1e-12)) and \
-                       max(abs(results.applied_moment_top[-1] * 1.4), abs(results.applied_moment_bot[-1] * 1.4)) != 0:
-                        if max(abs(results.applied_moment_top[-1] * 1.4),
-                               abs(results.applied_moment_bot[-1] * 1.4)) <= results.maximum_abs_moment[-1]:
-                            results.exit_message = 'max_1_4_Mu_limit_reached'
-                            break
-                
+                # Skipped for axial-only loading, where there is no applied
+                # first-order moment for the ratio to be measured against.
+                if max_1_4_Mu_limit is True and not (e == 0 or (abs(et) < 1e-12 and abs(eb) < 1e-12)):
+                    first_order = self._aci_first_order_moment(
+                        results.applied_moment_top[-1], results.applied_moment_bot[-1], P_check)
+                    if first_order > 0 and 1.4 * first_order <= results.maximum_abs_moment[-1]:
+                        results.exit_message = 'max_1_4_Mu_limit_reached'
+                        break
+
                 # Check deformation
                 if deformation_limit is not None:
                     if results.maximum_abs_disp[-1] > deformation_limit:
@@ -1676,8 +1685,8 @@ class NonSwayColumn2d(Column2d):
                         # Check for 1.4 Mu limit
                         if et == 0 and eb == 0:
                             continue  # Skip for axial-only columns
-                        applied_1_4_Mu = max(abs(results.applied_moment_top[-1] * 1.4),
-                                             abs(results.applied_moment_bot[-1] * 1.4))
+                        applied_1_4_Mu = 1.4 * self._aci_first_order_moment(
+                            results.applied_moment_top[-1], results.applied_moment_bot[-1], P_check)
                         if applied_1_4_Mu > M_check:
                             max_1_4_Mu_armed = True
                         elif max_1_4_Mu_armed:
