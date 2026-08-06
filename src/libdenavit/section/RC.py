@@ -321,10 +321,23 @@ class RC:
         return self._reinforcement
     @reinforcement.setter
     def reinforcement(self, x):
-        if type(x) == list:
-            self._reinforcement = x
+        """
+        Store the reinforcement as a list of patterns.
+
+        A single pattern object becomes a one-item list; a list or tuple is
+        copied into a new list.
+        """
+        if isinstance(x, (list, tuple)):
+            patterns = list(x)
         else:
-            self._reinforcement = [x]
+            patterns = [x]
+
+        if not patterns:
+            # Several methods (validate_section_reinf, maximum_tensile_steel_strain)
+            # index reinforcement[0], so concrete-only sections are not supported.
+            raise ValueError('reinforcement must contain at least one reinforcement pattern')
+
+        self._reinforcement = patterns
 
     def depth(self, axis):
         return self.conc_cross_section.depth(axis)
@@ -885,19 +898,24 @@ class RC:
         # endregion
 
         # region Define Concrete Material
+        # Reinforcement pattern required by each concrete cross-section type.
+        supported_reinf_for_section = {
+            'Rectangle': 'ReinfRect',
+            'Circle': 'ReinfCirc',
+            'Obround': 'ReinfIntersectingLoops',
+        }
+
         def validate_section_reinf(self):
-            if type(self.conc_cross_section).__name__ == 'Rectangle':
-                if type(self.reinforcement[0]).__name__ != 'ReinfRect':
+            section_name = type(self.conc_cross_section).__name__
+            expected = supported_reinf_for_section.get(section_name)
+            if expected is not None:
+                actual = type(self.reinforcement[0]).__name__
+                if actual != expected:
+                    # Report the offending pattern type, not the container type:
+                    # type(self.reinforcement).__name__ is always 'list'.
                     raise ValueError(
-                        f"Reinforcement type {type(self.reinforcement).__name__} not supported for this section type")
-            if type(self.conc_cross_section).__name__ == 'Circle':
-                if type(self.reinforcement[0]).__name__ != 'ReinfCirc':
-                    raise ValueError(
-                        f"Reinforcement type {type(self.reinforcement).__name__} not supported for this section type")
-            if type(self.conc_cross_section).__name__ == 'Obround':
-                if type(self.reinforcement[0]).__name__ != 'ReinfIntersectingLoops':
-                    raise ValueError(
-                        f"Reinforcement type {type(self.reinforcement).__name__} not supported for this section type")
+                        f"Reinforcement type {actual} not supported for section type "
+                        f"{section_name} (expected {expected})")
 
             if self.reinforcement[0].xc != 0 or self.reinforcement[0].yc != 0:
                 raise ValueError(f"Reinforcing pattern must be centered")
