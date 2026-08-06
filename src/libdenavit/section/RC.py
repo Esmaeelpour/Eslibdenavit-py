@@ -328,7 +328,7 @@ class RC:
         if self.units == 'si':
             return (self.fc * 145.038) ** (1 / 4) / 4000
 
-        raise ValueError(f'eps_c is not set and default is not impleted for {self.units = }')
+        raise ValueError(f'eps_c is not set and default is not implemented for {self.units = }')
     @eps_c.setter
     def eps_c(self, x):
         self._invalidate_section_caches()
@@ -616,15 +616,32 @@ class RC:
 
         
         else:
+            # Fall back to resolving EI_type as '<module>,<argument>'. Only the
+            # resolution is guarded: a bare except also swallowed errors raised
+            # inside the resolved function and reported them as an unknown
+            # EI_type, hiding the real failure.
+            import importlib
+
             try:
-                import importlib
                 module_name, EI_input = EI_type.split(',')
-                func_name = module_name
+            except (AttributeError, ValueError) as exc:
+                raise ValueError(
+                    f'Unknown EI_type {EI_type!r}. Expected one of the built-in method '
+                    f"names, or '<module>,<argument>' naming a module that defines a "
+                    f'function of the same name.') from exc
+
+            try:
                 module = importlib.import_module(module_name)
-                EI_trial = getattr(module, func_name)
-                return EI_trial(self, axis, EI_input, betadns, P, M, col)
-            except:
-                raise ValueError(f'Unknown EI_type {EI_type}')
+                EI_trial = getattr(module, module_name)
+            except (ImportError, AttributeError) as exc:
+                raise ValueError(
+                    f'Unknown EI_type {EI_type!r}: could not resolve a function named '
+                    f'{module_name!r} in a module of that name.') from exc
+
+            # The module must define a function with the same name as the
+            # module itself, callable as func(section, axis, arg, betadns,
+            # P, M, col).
+            return EI_trial(self, axis, EI_input, betadns, P, M, col)
 
     def interaction_diagram_object(self, axis, num_points=20, factored=False, only_compressive=True):
         # Cache on every input that changes the diagram. A single cached object
