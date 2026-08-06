@@ -122,8 +122,13 @@ class NonSwayColumn2d(Column2d):
 
 
     def _ecc_sign(self):
-        dominant_e = self.et if abs(self.et) >= abs(self.eb) else self.eb
-        return int(np.sign(dominant_e))
+        return int(np.sign(max(self.et, self.eb, key=abs)))
+
+
+    @property
+    def _double_curvature(self):
+        """True if the end eccentricities bend the column in double curvature."""
+        return self.et * self.eb < 0
 
 
     def _initialize_results(self):
@@ -603,8 +608,6 @@ class NonSwayColumn2d(Column2d):
         ops.pattern('Plain', 200, 100)
 
         
-        sgn_et = int(np.sign(self.et))
-        sgn_eb = int(np.sign(self.eb))
         ecc_sign = self._ecc_sign()
 
         ops.constraints('Plain')
@@ -624,7 +627,7 @@ class NonSwayColumn2d(Column2d):
             ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
         
-            if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+            if self._double_curvature:
                 if max(self.et, self.eb, key=abs) == self.et:
                     dof = 3 * self.ops_n_elem // 4
                 else:
@@ -669,9 +672,7 @@ class NonSwayColumn2d(Column2d):
                       / max(1, config['num_steps_vertical']) / div_factor)
                 ops.integrator('LoadControl', dF)
                 return
-            sgn_et = int(np.sign(self.et))
-            sgn_eb = int(np.sign(self.eb))
-            if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+            if self._double_curvature:
                 if max(self.et, self.eb, key=abs) == self.et:
                     dof = 3 * self.ops_n_elem // 4
                 else:
@@ -919,9 +920,7 @@ class NonSwayColumn2d(Column2d):
                 ops.integrator('LoadControl', dF)
             else:
                 # bending present: DisplacementControl as before
-                sgn_et = int(np.sign(self.et))
-                sgn_eb = int(np.sign(self.eb))
-                if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+                if self._double_curvature:
                     dof = 3 * self.ops_n_elem // 4 if abs(self.et) >= abs(self.eb) else 1 * self.ops_n_elem // 4
                     dU = self.length * disp_incr_factor / 2 / div_factor
                     ops.integrator('DisplacementControl', dof, 1, dU)
@@ -1036,9 +1035,7 @@ class NonSwayColumn2d(Column2d):
     def _run_ops_nonproportional_limit_point(self, config, results):
         """Run nonproportional limit point analysis."""
         def update_dU(disp_incr_factor, div_factor=1):
-            sgn_et = int(np.sign(self.et))
-            sgn_eb = int(np.sign(self.eb))
-            if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+            if self._double_curvature:
                 if max(self.et, self.eb, key=abs) == self.et:
                     dof = 3 * self.ops_n_elem // 4
                 else:
@@ -1124,11 +1121,9 @@ class NonSwayColumn2d(Column2d):
         ops.timeSeries('Linear', 101)
         ops.pattern('Plain', 201, 101)
         
-        sgn_et = int(np.sign(self.et))
-        sgn_eb = int(np.sign(self.eb))
         ecc_sign = self._ecc_sign()
 
-        if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+        if self._double_curvature:
             if max(self.et, self.eb, key=abs) == self.et:
                 dof = 3 * self.ops_n_elem // 4
             else:
@@ -1329,8 +1324,6 @@ class NonSwayColumn2d(Column2d):
 
         
         #region Determine eccentricity sign
-        sgn_et = int(np.sign(self.et))
-        sgn_eb = int(np.sign(self.eb))
         ecc_sign = self._ecc_sign()
         #endregion
 
@@ -1388,7 +1381,7 @@ class NonSwayColumn2d(Column2d):
                 ops.integrator('LoadControl', dF)
             else:
                 # Determine displacement control node
-                if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+                if self._double_curvature:
                     if abs(self.et) >= abs(self.eb):
                         control_node = 3 * self.ops_n_elem // 4
                     else:
@@ -1562,7 +1555,7 @@ class NonSwayColumn2d(Column2d):
                     ops.load(0, 0, 0, -self.eb * e * ecc_sign)
                     
                 # Determine control node and apply moments
-                if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
+                if self._double_curvature:
                     if abs(self.et) >= abs(self.eb):
                         control_node = 3 * self.ops_n_elem // 4
                     else:
