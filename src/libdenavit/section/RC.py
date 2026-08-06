@@ -56,13 +56,23 @@ class RC:
         self._Ec = x
 
     def get_shrinkage_props_for_uniaxial_material(self, print_factors=False, **kwargs):
+        """
+        ACI 209R-92 shrinkage properties for the OpenSees CreepShrinkageACI209 material.
+
+        Input conventions, which the correction equations themselves fix:
+            RH              ambient relative humidity as a fraction, 0.4 to 1.0
+            fine_agg_ratio  fine aggregate by weight, in percent (50 means 50%)
+            air_content     air content in percentage points (6 means 6%)
+            VoverS          volume-to-surface ratio in length units
+            t0 / tc         age at loading / curing duration, days
+        """
         # Define default values for 'si' and 'us' units
         default_values = {'si':
                               {'eps_sh_u0': 780e-6,  # ultimate shrinkage strain
                                'tc': 7,  # initial moist curing time
                                'RH': 0.4,  # ambient relative humidity
                                'fine_agg_ratio': 50,  # fine aggregate ratio
-                               'air_content': 0.06,  # air content
+                               'air_content': 6,  # air content, percentage points
                                'VoverS': 38,  # volume to surface ratio
                                'slump': 70,  # slump (mm)
                                'cement_content': 360  # cement content (kg/m^3)
@@ -72,7 +82,7 @@ class RC:
                                'tc': 7,  # initial moist curing time
                                'RH': 0.4,  # ambient relative humidity
                                'fine_agg_ratio': 50,  # fine aggregate ratio
-                               'air_content': 0.06,  # air content
+                               'air_content': 6,  # air content, percentage points
                                'VoverS': 1.5,  # volume to surface ratio
                                'slump': 2.7,  # slump (in)
                                'cement_content': 611  # cement content (lb/yd^3)
@@ -175,6 +185,16 @@ class RC:
         return {'eps_sh_u': eps_sh_u, 'f': f, 'psish': f}
 
     def get_creep_props_for_uniaxial_material(self, print_factors=False, **kwargs):
+        """
+        ACI 209R-92 creep properties for the OpenSees CreepShrinkageACI209 material.
+
+        Input conventions, which the correction equations themselves fix:
+            RH              ambient relative humidity as a fraction, 0.4 to 1.0
+            fine_agg_ratio  fine aggregate by weight, in percent (50 means 50%)
+            air_content     air content in percentage points (6 means 6%)
+            VoverS          volume-to-surface ratio in length units
+            t0 / tc         age at loading / curing duration, days
+        """
         # Define default values for 'si' and 'us' units
         default_values = {'si':
                               {'phi_u_0': 2.35,  # ultimate creep coefficient
@@ -182,8 +202,8 @@ class RC:
                                'RH': 0.4,  # ambient relative humidity
                                'VoverS': 38,  # volume to surface ratio
                                'slump': 70,  # slump (mm)
-                               'fine_agg_ratio': 50,  # fine aggregate ratio
-                               'air_content': 0.06,  # air content
+                               'fine_agg_ratio': 50,  # fine aggregate ratio, percent by weight
+                               'air_content': 6,  # air content, percentage points
                                },
                           'us':
                               {'phi_u_0': 2.35,  # ultimate creep coefficient
@@ -191,8 +211,8 @@ class RC:
                                'RH': 0.4,  # ambient relative humidity
                                'VoverS': 1.5,  # volume to surface ratio
                                'slump': 2.7,  # slump (mm)
-                               'fine_agg_ratio': 0.5,  # fine aggregate ratio
-                               'air_content': 0.06,  # air content
+                               'fine_agg_ratio': 50,  # fine aggregate ratio, percent by weight
+                               'air_content': 6,  # air content, percentage points
                                }
                           }
 
