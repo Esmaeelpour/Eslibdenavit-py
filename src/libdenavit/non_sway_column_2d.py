@@ -63,7 +63,8 @@ class NonSwayColumn2d(Column2d):
     def _apply_aci_minimum_eccentricity(self, et, eb):
         """
         Apply ACI 318-19 Section 6.6.4.5.4 minimum eccentricity
-        e_min = max(0.6 + 0.03*h, 1.0 inch)
+
+        e_min = 0.6 + 0.03*h  (in.)   /   15 + 0.03*h  (mm)
         """
         # Get section dimension in direction of bending
         if self.axis == 'x':
@@ -76,9 +77,9 @@ class NonSwayColumn2d(Column2d):
         
         # Calculate minimum eccentricity (ACI 318-19 Section 6.6.4.5.4)
         if self.section.units == 'us':
-            e_min = 0.6 + 0.03 * h
+            e_min = 0.6 + 0.03 * h  # in.
         else:  # SI units
-            e_min = max(15 + 0.03 * h, 25)  # in mm
+            e_min = 15 + 0.03 * h  # mm
         
         self.e_min = e_min
         
