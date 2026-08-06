@@ -17,7 +17,7 @@ class RC:
         self._eps_c = None
         self._Abt = None
         self._Mn = dict()
-        self._CS_id2d = None
+        self._CS_id2d = dict()
         self._reinforcement = None
 
         self.conc_cross_section = conc_cross_section
@@ -52,6 +52,7 @@ class RC:
         raise ValueError(f'Ec is not set and default is not implemented for {self.units = }')
     @Ec.setter
     def Ec(self, x):
+        self._invalidate_section_caches()
         self._Ec = x
 
     def get_shrinkage_props_for_uniaxial_material(self, print_factors=False, **kwargs):
@@ -299,6 +300,7 @@ class RC:
         raise ValueError(f'Es is not set and default is not implemented for {self.units = }')
     @Es.setter
     def Es(self, x):
+        self._invalidate_section_caches()
         self._Es = x
 
     @property
@@ -313,6 +315,7 @@ class RC:
         raise ValueError(f'eps_c is not set and default is not impleted for {self.units = }')
     @eps_c.setter
     def eps_c(self, x):
+        self._invalidate_section_caches()
         self._eps_c = x
         
 
@@ -338,6 +341,7 @@ class RC:
             raise ValueError('reinforcement must contain at least one reinforcement pattern')
 
         self._reinforcement = patterns
+        self._invalidate_section_caches()
 
     def depth(self, axis):
         return self.conc_cross_section.depth(axis)
@@ -607,12 +611,29 @@ class RC:
                 raise ValueError(f'Unknown EI_type {EI_type}')
 
     def interaction_diagram_object(self, axis, num_points=20, factored=False, only_compressive=True):
-        if self._CS_id2d is None:
+        # Cache on every input that changes the diagram. A single cached object
+        # returned the first diagram built for any later combination, so an
+        # x-axis request answered a y-axis one, and factored/only_compressive/
+        # num_points changes were ignored.
+        key = (axis, num_points, factored, only_compressive)
+        if key not in self._CS_id2d:
             from libdenavit import InteractionDiagram2d
             P_CS, M_CS, _ = self.section_interaction_2d(axis, num_points=num_points, factored=factored, only_compressive=only_compressive)
-            CS_id2d = InteractionDiagram2d(M_CS, P_CS, is_closed=True)
-            self._CS_id2d = CS_id2d
-        return self._CS_id2d
+            self._CS_id2d[key] = InteractionDiagram2d(M_CS, P_CS, is_closed=True)
+        return self._CS_id2d[key]
+
+    def _invalidate_section_caches(self):
+        """
+        Drop cached section responses after a change that alters them.
+
+        Only attributes exposed as properties can invalidate automatically.
+        fc, fy and conc_cross_section are plain public attributes, so mutating
+        them directly cannot be intercepted; call this method explicitly after
+        doing so. Converting them to properties is a larger API change and is
+        deliberately left out of this commit.
+        """
+        self._CS_id2d = dict()
+        self._Mn = dict()
 
     def Mn(self, axis):
         if self._Mn.get(axis) is None:
