@@ -14,6 +14,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# EI_type values whose stiffness varies with the applied load, and which
+# therefore cannot be used where a single constant stiffness is required.
+_LOAD_DEPENDENT_EI_TYPES = frozenset(
+    {'aci-c', 'jf-a', 'jf-b', 'proposed_1_1', 'proposed_1_2', 'proposed_2'})
+
 
 class NonSwayColumn2d(Column2d):
     def __init__(self, section, length, et, eb, **kwargs):
@@ -1272,7 +1277,19 @@ class NonSwayColumn2d(Column2d):
                 disp_incr_factor: Displacement increment factor (default 1e-5)
                 eigenvalue_limit: Eigenvalue limit for stability (default 0.0)
                 deformation_limit: Maximum deformation limit (default 0.1*L)
-                
+                EI_type: Name of a load-independent built-in stiffness method
+                    ('aci-a', 'aci-b', 'gross'). Load-dependent methods are
+                    rejected: the elastic member is built once, before loading,
+                    so its stiffness cannot depend on P or M.
+                EI: Custom effective stiffness, constant or callable, passed
+                    through to RC.EIeff. A callable is evaluated once with
+                    P = M = None.
+                EI_kwargs: Extra keyword arguments for a callable EI
+                betadns: Sustained load ratio used by EI_type (default 0.0)
+
+                With neither EI nor EI_type given, the stiffness falls back to
+                0.875*(0.2*Ec*Ig + Es*Isr) for backwards compatibility.
+
         Returns:
             AnalysisResults object with applied loads and second-order moments
         """
@@ -1294,6 +1311,14 @@ class NonSwayColumn2d(Column2d):
         # also applying self.dxo, which would count the same effect twice. Pass
         # include_imperfection=True to model dxo explicitly instead.
         include_imperfection = kwargs.get('include_imperfection', False)
+        # Effective flexural stiffness of the elastic member. The model is built
+        # once with a single Elastic section, so the stiffness must be constant
+        # over the analysis: EI_type is restricted to the load-independent
+        # methods, and a callable EI is evaluated once, before loading.
+        EI_type = kwargs.get('EI_type', None)
+        EI = kwargs.get('EI', None)
+        EI_kwargs = kwargs.get('EI_kwargs', None)
+        betadns = kwargs.get('betadns', 0.0)
         #endregion
 
 
@@ -1309,10 +1334,28 @@ class NonSwayColumn2d(Column2d):
         
         #region Calculate elastic properties per ACI 318-19
         EI_gross = self.section.EIgross(self.axis)
-        # EI_eff = 0.7 * EI_gross
-        EI_eff = 0.875*(0.2 * self.section.Ec * self.section.Ig(self.axis) + self.section.Es * self.section.Isr(self.axis))
-        A = self.section.Ag  
-        E = self.section.Ec  
+        if EI is None and EI_type is None:
+            # Historical default, kept so existing callers are unaffected:
+            # 0.875 times ACI 318-19 (6.6.4.4.4b). Prefer passing EI or EI_type.
+            EI_eff = 0.875 * (0.2 * self.section.Ec * self.section.Ig(self.axis)
+                              + self.section.Es * self.section.Isr(self.axis))
+        else:
+            if isinstance(EI_type, str) and EI_type.strip().lower() in _LOAD_DEPENDENT_EI_TYPES:
+                raise ValueError(
+                    f'EI_type {EI_type!r} depends on the applied load, but this '
+                    f'analysis builds one Elastic section before loading begins '
+                    f'and so needs a constant stiffness. Pass a constant EI, or '
+                    f'a callable EI that does not use P or M.')
+            EI_eff = self.section.EIeff(
+                self.axis, EI_type, betadns, P=None, M=None, col=self,
+                EI=EI, EI_kwargs=EI_kwargs)
+            EI_eff = float(EI_eff)
+            if not np.isfinite(EI_eff) or EI_eff <= 0:
+                raise ValueError(
+                    f'Effective stiffness must be finite and positive '
+                    f'(got {EI_eff!r})')
+        A = self.section.Ag
+        E = self.section.Ec
         I_eff = EI_eff / E
         #endregion
 
