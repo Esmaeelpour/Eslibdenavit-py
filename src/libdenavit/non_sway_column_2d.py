@@ -100,6 +100,11 @@ class NonSwayColumn2d(Column2d):
         return 0.1 * self.length
 
 
+    def _ecc_sign(self):
+        dominant_e = self.et if abs(self.et) >= abs(self.eb) else self.eb
+        return int(np.sign(dominant_e))
+
+
     def _initialize_results(self):
         """Initialize analysis results object with required attributes."""
         # Get base attributes and add NonSway-specific ones
@@ -574,12 +579,8 @@ class NonSwayColumn2d(Column2d):
         
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        
-        if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
-            ecc_sign = sgn_et if abs(self.et) >= abs(self.eb) else sgn_eb
-        else:
-            ecc_sign = sgn_et
-        
+        ecc_sign = self._ecc_sign()
+
         ops.constraints('Plain')
         ops.numberer('RCM')
         ops.system('UmfPack')
@@ -722,13 +723,7 @@ class NonSwayColumn2d(Column2d):
         # region Determine the sign of the eccentricity
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        if sgn_et != sgn_eb:
-            if max(self.et, self.eb, key=abs) == self.et:
-                ecc_sign = sgn_et
-            else:
-                ecc_sign = sgn_eb
-        else:
-            ecc_sign = sgn_et
+        ecc_sign = self._ecc_sign()
         # endregion
 
         # region Define recorder
@@ -927,16 +922,13 @@ class NonSwayColumn2d(Column2d):
         elif sgn_et != sgn_eb:
             if max(self.et, self.eb, key=abs) == self.et:
                 dof = 3 * self.ops_n_elem // 4
-                ecc_sign = sgn_et
             else:
                 dof = 1 * self.ops_n_elem // 4
-                ecc_sign = sgn_eb
             dU = self.length * config['disp_incr_factor'] / 20
             ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
             ops.integrator('DisplacementControl', dof, 1, dU)
         else:
-            ecc_sign = sgn_et
             dU = self.length * config['disp_incr_factor'] / 10
             ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
@@ -1102,22 +1094,18 @@ class NonSwayColumn2d(Column2d):
         
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        
-        
-        
+        ecc_sign = self._ecc_sign()
+
         if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
             if max(self.et, self.eb, key=abs) == self.et:
                 dof = 3 * self.ops_n_elem // 4
-                ecc_sign = sgn_et
             else:
                 dof = 1 * self.ops_n_elem // 4
-                ecc_sign = sgn_eb
             dU = self.length * config['disp_incr_factor'] / 2
             ops.load(self.ops_n_elem, 0, 0, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
             ops.integrator('DisplacementControl', dof, 1, dU)
         else:
-            ecc_sign = sgn_et
             dU = self.length * config['disp_incr_factor']
             ops.load(self.ops_n_elem, 0, 0, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
@@ -1311,11 +1299,7 @@ class NonSwayColumn2d(Column2d):
         #region Determine eccentricity sign
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        
-        if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
-            ecc_sign = sgn_et if abs(self.et) >= abs(self.eb) else sgn_eb
-        else:
-            ecc_sign = sgn_et
+        ecc_sign = self._ecc_sign()
         #endregion
 
         
