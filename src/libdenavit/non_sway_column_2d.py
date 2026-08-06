@@ -101,6 +101,26 @@ class NonSwayColumn2d(Column2d):
         return 0.1 * self.length
 
 
+    def _reference_axial_load(self):
+        """
+        Reference axial load used to size load-control increments.
+
+        num_steps_vertical is the number of steps taken to reach the reference
+        load, so the increment has to be on the scale of the column's axial
+        capacity. Using a unit reference makes an axial-only analysis take
+        (capacity / num_steps_vertical) times more steps than intended.
+
+        Falls back to a unit reference for sections that define no squash load.
+        """
+        try:
+            p0 = float(self.section.p0)
+        except (AttributeError, TypeError, ValueError):
+            return 1.0
+        if not np.isfinite(p0) or p0 <= 0:
+            return 1.0
+        return p0
+
+
     def _ecc_sign(self):
         dominant_e = self.et if abs(self.et) >= abs(self.eb) else self.eb
         return int(np.sign(dominant_e))
@@ -596,7 +616,7 @@ class NonSwayColumn2d(Column2d):
 
         if config['e'] == 0.0:
             # axial-only: vertical load only, no moments
-            dF = 1 / max(1, config['num_steps_vertical'])
+            dF = self._reference_axial_load() / max(1, config['num_steps_vertical'])
             ops.load(self.ops_n_elem, 0, -1, 0)  # reference vertical load
             ops.load(0, 0, 0, 0.0)                 # no moment
             ops.integrator('LoadControl', dF)
@@ -645,7 +665,8 @@ class NonSwayColumn2d(Column2d):
         def update_dU(disp_incr_factor, div_factor=1):
             if config['e'] == 0.0:
                 # axial-only: shrink the load step, stay in LoadControl
-                dF = (1.0 / max(1, config['num_steps_vertical'])) / div_factor
+                dF = (self._reference_axial_load()
+                      / max(1, config['num_steps_vertical']) / div_factor)
                 ops.integrator('LoadControl', dF)
                 return
             sgn_et = int(np.sign(self.et))
