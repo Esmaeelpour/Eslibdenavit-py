@@ -1702,14 +1702,14 @@ class NonSwayColumn2d(Column2d):
                 ind, x = find_limit_point_in_list(results.applied_axial_load, P_check)
         elif 'Peak Load' in results.exit_message or 'Peak Moment' in results.exit_message:
             ind = len(results.applied_axial_load) - 2 # Go back to the peak
-            x = 1.0 
+            x = 0.0
         elif 'Eigenvalue' in results.exit_message:
             ind, x = find_limit_point_in_list(results.lowest_eigenvalue, eigenvalue_limit)
         elif 'Deformation' in results.exit_message:
             ind, x = find_limit_point_in_list(results.maximum_abs_disp, deformation_limit)
         elif 'max_1_4_Mu_limit_reached' in results.exit_message:
             ind = len(results.applied_axial_load) - 2 # Go back to the point before the last
-            x = 1.0
+            x = 0.0
         else:
             ind = len(results.applied_axial_load) - 1
             x = 0.0
