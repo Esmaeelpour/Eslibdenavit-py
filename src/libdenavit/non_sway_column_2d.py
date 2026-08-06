@@ -1644,7 +1644,7 @@ class NonSwayColumn2d(Column2d):
                             continue  # Skip for axial-only columns
                         if max(abs(results.applied_moment_top[-1] * 1.4),
                                abs(results.applied_moment_bot[-1] * 1.4)) <= M_check:
-                            results.exit_message = 'M_max_1_4_Mu Limit Reached'
+                            results.exit_message = 'max_1_4_Mu_limit_reached'
                             break
                     
                 if step_count >= max_steps:
