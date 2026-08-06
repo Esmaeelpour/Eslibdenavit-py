@@ -1829,7 +1829,6 @@ class NonSwayColumn2d(Column2d):
         # 2. Get Material P-M Diagram (for P_max_material and M_n_material)
         P_sect, M_sect, _ = self.section.section_interaction_2d(self.axis, 100, factored=section_factored,
                                                                 only_compressive=True)
-        section_interaction = InteractionDiagram2d(M_sect, P_sect, is_closed=False)
         P_max_material = np.max(P_sect)
 
         # Find pure bending strength (Mn)
@@ -1845,7 +1844,7 @@ class NonSwayColumn2d(Column2d):
         # Initialize results list with the first point (axial-only loading)
         P = [P_start]
         M1 = [0]
-        M2 = [section_interaction.find_x_given_y(P_start, 'pos')]
+        M2 = [results_pcr.maximum_abs_moment_at_limit_point]
         exit_message = [results_pcr.exit_message]
 
         if np.isnan(P[0]):
