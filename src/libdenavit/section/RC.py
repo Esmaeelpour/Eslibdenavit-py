@@ -368,24 +368,25 @@ class RC:
             return extreme_strain
 
         if type(self.conc_cross_section).__name__ == 'Obround':
-            extreme_strain = float("inf")
-            for i in range(100):
-                x_coord = self.conc_cross_section.a/2 + self.conc_cross_section.D/2 * sin(pi/2 * i/100)
-                y_coord = self.conc_cross_section.D/2 - self.conc_cross_section.D/2 * sin(pi/2 * i/100)
-                strain = axial_strain - y_coord * abs(curvatureX) - x_coord * abs(curvatureY)
-                if strain < extreme_strain:
-                    extreme_strain = strain
+            a = self.conc_cross_section.a
+            D = self.conc_cross_section.D
+            extreme_strain = axial_strain \
+                - (a / 2) * abs(curvatureY) \
+                - (D / 2) * sqrt(curvatureX ** 2 + curvatureY ** 2)
             return extreme_strain
 
         raise ValueError(f'No maximum concrete compression strain implemented for {type(self.conc_cross_section).__name__ = }')
 
     def maximum_tensile_steel_strain(self, axial_strain, curvatureX=0, curvatureY=0):
         max_strain = float('-inf')
-        for i in self.reinforcement[0].coordinates:
-            strain = axial_strain - (i[1] - self.reinforcement[0].yc) * curvatureX \
-                     - (i[0] - self.reinforcement[0].xc) * curvatureY
-            if strain > max_strain:
-                max_strain = strain
+        for pattern in self.reinforcement:
+            x_coordinates, y_coordinates = pattern.coordinates
+            for x, y in zip(x_coordinates, y_coordinates):
+                strain = axial_strain - y * curvatureX - x * curvatureY
+                if strain > max_strain:
+                    max_strain = strain
+        if max_strain == float('-inf'):
+            raise ValueError('No reinforcing bars found to compute a maximum tensile steel strain')
         return max_strain
 
     def maximum_tensile_strain(self, axial_strain, curvatureX=0, curvatureY=0):
