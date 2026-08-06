@@ -774,21 +774,98 @@ class RC:
 
         return P, M, et
 
+    def _validate_confinement_inputs(self):
+        """
+        Validate the transverse reinforcement a confined concrete model needs.
+
+        Run before any confinement arithmetic so that missing or non-physical
+        input raises a clear error rather than a TypeError on None, a
+        ZeroDivisionError, or a silently inflated strength.
+        """
+        for name in ('dbt', 's', 'fyt'):
+            value = getattr(self, name)
+            if value is None:
+                raise ValueError(
+                    f"Confined concrete requires the transverse reinforcement property "
+                    f"'{name}' to be defined on the RC section. Set it via "
+                    f"RC(..., {name}=<value>), or use a '_no_confinement' conc_mat_type, "
+                    f"which does not require transverse reinforcement.")
+            if not np.isfinite(value) or value <= 0:
+                raise ValueError(
+                    f"Transverse reinforcement '{name}' must be a finite positive value "
+                    f"(got {value!r})")
+
+        if self.s <= self.dbt:
+            raise ValueError(
+                f'Hoop spacing s ({self.s}) must be greater than the transverse bar '
+                f'diameter dbt ({self.dbt}) so the clear spacing sp = s - dbt is positive.')
+
+        if not np.isfinite(self.fc) or self.fc <= 0:
+            raise ValueError(
+                f'fc must be a finite positive value for confined concrete (got {self.fc!r})')
+
+    @staticmethod
+    def _check_core_reinforcement_ratio(rho_cc):
+        """1 - rho_cc divides the confinement effectiveness coefficient."""
+        if not np.isfinite(rho_cc) or not 0.0 <= rho_cc < 1.0:
+            raise ValueError(
+                f'Longitudinal reinforcement ratio of the confined core is {rho_cc!r}; it '
+                f'must lie in [0, 1) because 1 - rho_cc appears in a denominator. Check the '
+                f'bar area, bar count and core dimensions.')
+
+    @staticmethod
+    def _check_confined_core(ke, *confining_stresses):
+        """ke must be positive, and each lateral stress is later divided by."""
+        if not np.isfinite(ke) or ke <= 0.0:
+            raise ValueError(
+                f'Confinement effectiveness coefficient ke is {ke!r}; this core geometry '
+                f'cannot produce a valid confined concrete model.')
+        for fl in confining_stresses:
+            if not np.isfinite(fl) or fl <= 0.0:
+                raise ValueError(
+                    f'Lateral confining stress is {fl!r}; it must be finite and positive. '
+                    f'Check the transverse bar area, spacing and yield strength.')
+
     def confined_concrete_props(self):
+        """
+        Confined concrete strength and strain.
+
+        Rectangles and circles follow Mander/Chang and Mander; the obround
+        applies the circular relations to the core enclosed by each perimeter
+        hoop, which is engineering judgement rather than a published model.
+        """
+        self._validate_confinement_inputs()
+
         if type(self.conc_cross_section).__name__ == 'Rectangle':
             # dc and bc = core dimensions to centerlines of perimeter hoop in x and y directions
-            bc = self.reinforcement[0].Bx + self.reinforcement[0].db / 2 + self.dbt / 2
-            dc = self.reinforcement[0].By + self.reinforcement[0].db / 2 + self.dbt / 2
+            reinf = self.reinforcement[0]
+            for count_name in ('nbx', 'nby'):
+                count = getattr(reinf, count_name)
+                if count < 2:
+                    raise ValueError(
+                        f'Confined rectangular sections need at least 2 bars per side; '
+                        f'{count_name} is {count}. The clear bar spacing is computed as '
+                        f'B/({count_name} - 1) - db.')
+
+            bc = reinf.Bx + reinf.db / 2 + self.dbt / 2
+            dc = reinf.By + reinf.db / 2 + self.dbt / 2
+            if bc <= 0 or dc <= 0:
+                raise ValueError(f'Confined core dimensions must be positive (bc = {bc}, dc = {dc})')
 
             # Ac = area of core of section enclosed by the center lines of the permiter hoops
             Ac = bc * dc
 
             # ρcc = ratio of area of longitudinal reinforcement to area of core of section
-            ρcc = self.reinforcement[0].Ab * self.reinforcement[0].num_bars / Ac
+            ρcc = reinf.Ab * reinf.num_bars / Ac
+            self._check_core_reinforcement_ratio(ρcc)
 
             # wx and wy = clear distance between bars in x and y directions
-            wx = self.reinforcement[0].Bx / (self.reinforcement[0].nbx - 1) - self.reinforcement[0].db
-            wy = self.reinforcement[0].By / (self.reinforcement[0].nby - 1) - self.reinforcement[0].db
+            wx = reinf.Bx / (reinf.nbx - 1) - reinf.db
+            wy = reinf.By / (reinf.nby - 1) - reinf.db
+            if wx < 0 or wy < 0:
+                raise ValueError(
+                    f'Clear distance between longitudinal bars is negative (wx = {wx:.4g}, '
+                    f'wy = {wy:.4g}); the bars do not fit in the core as specified.')
 
             # sp = clear vertical spacing between spiral or hoop bars
             sp = self.s - self.dbt
@@ -811,6 +888,7 @@ class RC:
             # flx and fly = lateral confining stress in x and y directions
             flx = ke * Asx / (self.s * dc) * self.fyt
             fly = ke * Asy / (self.s * bc) * self.fyt
+            self._check_confined_core(ke, flx, fly)
 
             # Confinement effect from Chang, G. A., and Mander, J. B. (1994).
             # Seismic Energy Based Fatigue Damage Analysis of Bridge Columns: Part I -
@@ -838,6 +916,7 @@ class RC:
 
             # ρcc = ratio of area of longitudinal reinforcement to area of core of section
             ρcc = self.reinforcement[0].Ab * self.reinforcement[0].num_bars / Ac
+            self._check_core_reinforcement_ratio(ρcc)
 
             # sp = clear vertical spacing between spiral or hoop bars
             sp = self.s - self.dbt
@@ -848,6 +927,7 @@ class RC:
             # flx and fly = lateral confining stress in x and y directions
             ρs = 4 * self.Abt / (ds * self.s)  # Equation 17
             fl = 0.5 * ke * ρs * self.fyt  # Equation 19
+            self._check_confined_core(ke, fl)
 
             # fcc = confined concrete strength
             fcc = self.fc * (-1.254 + 2.254 * sqrt(1 + 7.94 * fl / self.fc) - 2 * fl / self.fc)
@@ -868,6 +948,7 @@ class RC:
 
             # ρcc = ratio of area of longitudinal reinforcement to area of core of section
             ρcc = self.reinforcement[0].Ab * self.reinforcement[0].num_bars / 2 / Ac
+            self._check_core_reinforcement_ratio(ρcc)
 
             # sp = clear vertical spacing between spiral or hoop bars
             sp = self.s - self.dbt
@@ -878,6 +959,7 @@ class RC:
             # flx and fly = lateral confining stress in x and y directions
             ρs = 4 * self.Abt / (ds * self.s)  # Equation 17
             fl = 0.5 * ke * ρs * self.fyt  # Equation 19
+            self._check_confined_core(ke, fl)
 
             # fcc = confined concrete strength
             fcc = self.fc * (-1.254 + 2.254 * sqrt(1 + 7.94 * fl / self.fc) - 2 * fl / self.fc)
@@ -888,6 +970,10 @@ class RC:
             x_bar = (fl + fl) / (2 * self.fc)
             eps_prime_cc = self.eps_c * (1 + k2 * x_bar)
             return fcc, eps_prime_cc
+
+        raise ValueError(
+            f'No confined concrete model implemented for cross section type '
+            f'{type(self.conc_cross_section).__name__}')
 
     def build_ops_fiber_section(self, section_id, start_material_id, steel_mat_type, conc_mat_type, nfy, nfx, GJ=1.0e6,
                                 axis=None, creep=False, creep_props_dict=None, shrinkage_props_dict=None):
@@ -980,14 +1066,13 @@ class RC:
                 raise ValueError(f"Reinforcing pattern must be centered")
 
         def validate_confinement_reinf(self):
-            if self.dbt is None or self.s is None:
+            # Delegates so the transverse reinforcement, spacing and core
+            # geometry are checked identically wherever confinement is used.
+            try:
+                self._validate_confinement_inputs()
+            except ValueError as exc:
                 raise ValueError(
-                    f"conc_mat_type='{conc_mat_type}' models confined concrete and requires transverse "
-                    f"reinforcement to be defined on the RC section (dbt = transverse bar diameter, "
-                    f"s = spacing) to compute the confinement effect. "
-                    f"Set them via RC(..., dbt=<value>, s=<value>), or use a '_no_confinement' "
-                    f"conc_mat_type, which does not require transverse reinforcement."
-                )
+                    f"conc_mat_type='{conc_mat_type}' models confined concrete: {exc}") from exc
 
         confinement = False
 
