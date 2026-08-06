@@ -1458,9 +1458,9 @@ class NonSwayColumn2d(Column2d):
                         if M_check > M_boundary:
                             results.exit_message = 'Material Strength Limit Reached'
                             break
-                    except Exception as e:
+                    except Exception as exc:
                         # If find_x_given_y fails, the point is outside the valid range
-                        logger.debug(f'find_x_given_y failed, treating point as outside the valid range: {e}')
+                        logger.debug(f'find_x_given_y failed, treating point as outside the valid range: {exc}')
                         results.exit_message = 'Material Strength Limit Reached'
                         break
 
@@ -1642,9 +1642,9 @@ class NonSwayColumn2d(Column2d):
                             if M_check > M_boundary:
                                 results.exit_message = 'Material Strength Limit Reached'
                                 break
-                        except Exception as e:
+                        except Exception as exc:
                             # If find_x_given_y fails, the point is outside the valid range
-                            logger.debug(f'find_x_given_y failed, treating point as outside the valid range: {e}')
+                            logger.debug(f'find_x_given_y failed, treating point as outside the valid range: {exc}')
                             results.exit_message = 'Material Strength Limit Reached'
                             break
                     
