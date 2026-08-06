@@ -841,9 +841,6 @@ class NonSwayColumn2d(Column2d):
             results.time_in_longterm_analysis.append(ops.getTime())
             results.deformation_in_longterm_analysis.append(ops_get_maximum_abs_disp(self))
             
-            time_in_longterm_analysis.append(results.time_in_longterm_analysis)
-            deformation_in_longterm_analysis.append(results.maximum_abs_disp)
-            
             
             # Check for limits
             exit_message = check_analysis_limits(
