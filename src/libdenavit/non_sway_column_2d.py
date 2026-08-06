@@ -166,7 +166,7 @@ class NonSwayColumn2d(Column2d):
 
 
         exit_message = [results.exit_message]
-        if P is np.nan or P == [np.nan]:
+        if not np.isfinite(P[0]):
             raise ValueError('Analysis failed at axial only loading')
 
         # Loop axial linearly spaced axial loads witn non-proportional analyses
