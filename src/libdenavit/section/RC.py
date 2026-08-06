@@ -38,11 +38,29 @@ class RC:
 
 
 
+    @staticmethod
+    def _require_positive(name, value):
+        """Reject a non-finite or non-positive material property.
+
+        A negative modulus propagates silently into a negative EIgross, and
+        a negative fc reaches sqrt() as a bare math domain error.
+        """
+        if value is None:
+            raise ValueError(f'{name} must be set to a finite positive value')
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'{name} must be numeric (got {value!r})') from exc
+        if not np.isfinite(numeric) or numeric <= 0:
+            raise ValueError(f'{name} must be a finite positive value (got {value!r})')
+        return numeric
+
     @property
     def Ec(self):
         if self._Ec is not None:
             return self._Ec
 
+        self._require_positive('fc', self.fc)
         if self.units == 'us':
             return 57 * sqrt(self.fc * 1000)
 
@@ -52,6 +70,8 @@ class RC:
         raise ValueError(f'Ec is not set and default is not implemented for {self.units = }')
     @Ec.setter
     def Ec(self, x):
+        if x is not None:
+            self._require_positive('Ec', x)
         self._invalidate_section_caches()
         self._Ec = x
 
@@ -316,6 +336,8 @@ class RC:
         raise ValueError(f'Es is not set and default is not implemented for {self.units = }')
     @Es.setter
     def Es(self, x):
+        if x is not None:
+            self._require_positive('Es', x)
         self._invalidate_section_caches()
         self._Es = x
 
@@ -331,6 +353,8 @@ class RC:
         raise ValueError(f'eps_c is not set and default is not implemented for {self.units = }')
     @eps_c.setter
     def eps_c(self, x):
+        if x is not None:
+            self._require_positive('eps_c', x)
         self._invalidate_section_caches()
         self._eps_c = x
         
@@ -430,6 +454,8 @@ class RC:
     @property
     def p0(self):
         # Nominal axial strength of section
+        self._require_positive('fc', self.fc)
+        self._require_positive('fy', self.fy)
         p0 = 0.85 * self.fc * (self.Ag - self.Asr) + self.fy * self.Asr
         return p0
 

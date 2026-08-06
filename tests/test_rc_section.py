@@ -641,3 +641,33 @@ class TestCustomEIeff:
     def test_unknown_string_lists_the_builtins(self, rect):
         with pytest.raises(ValueError, match='aci-a'):
             rect.EIeff('x', 'no-such-method')
+
+
+class TestMaterialPropertyValidation:
+    """A non-physical modulus used to propagate into a negative EIgross."""
+
+    @pytest.mark.parametrize('bad', [0, -4])
+    def test_invalid_fc_rejected(self, bad):
+        section = RC(Rectangle(30, 20), ReinfRect(14, 24, 3, 3, 0.79), bad, 60, 'US')
+        with pytest.raises(ValueError, match='fc must be a finite positive'):
+            section.Ec
+
+    def test_invalid_fy_rejected(self):
+        section = RC(Rectangle(30, 20), ReinfRect(14, 24, 3, 3, 0.79), 4, -60, 'US')
+        with pytest.raises(ValueError, match='fy must be a finite positive'):
+            section.p0
+
+    @pytest.mark.parametrize('attribute', ['Ec', 'Es', 'eps_c'])
+    @pytest.mark.parametrize('bad', [0, -1000, float('nan'), float('inf')])
+    def test_invalid_modulus_rejected(self, rect, attribute, bad):
+        with pytest.raises(ValueError, match='finite positive'):
+            setattr(rect, attribute, bad)
+
+    @pytest.mark.parametrize('attribute,value',
+                             [('Ec', 4000.0), ('Es', 29500.0), ('eps_c', 0.0021)])
+    def test_valid_values_still_accepted(self, rect, attribute, value):
+        setattr(rect, attribute, value)
+        assert getattr(rect, attribute) == value
+
+    def test_gross_stiffness_stays_positive(self, rect):
+        assert rect.EIgross('x') > 0
