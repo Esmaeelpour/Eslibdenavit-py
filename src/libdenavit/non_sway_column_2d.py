@@ -1124,8 +1124,8 @@ class NonSwayColumn2d(Column2d):
             section_strains = ops_get_section_strains(self)
 
             results.applied_axial_load.append(config['P'])
-            results.applied_moment_top.append(self.et * time * ecc_sign)
-            results.applied_moment_bot.append(-self.eb * time * ecc_sign)
+            results.applied_moment_top.append(self.et * config['e'] * time * ecc_sign)
+            results.applied_moment_bot.append(-self.eb * config['e'] * time * ecc_sign)
             results.maximum_abs_moment.append(ops_get_maximum_abs_moment(self))
             results.maximum_abs_disp.append(ops_get_maximum_abs_disp(self))
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
