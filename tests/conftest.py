@@ -71,11 +71,15 @@ class OpsRecorder:
         self.fibers = []
         self.layers = []
         self.patches = []
+        self.materials = []
 
     def __getattr__(self, name):
         def noop(*args, **kwargs):
             return None
         return noop
+
+    def uniaxialMaterial(self, kind, tag, *args):
+        self.materials.append({'kind': kind, 'tag': tag, 'args': args})
 
     def fiber(self, y, z, area, material):
         self.fibers.append((y, z, area, material))
@@ -96,6 +100,20 @@ class OpsRecorder:
         so discretisation tests must count both.
         """
         return len(self.fibers) + sum(layer['n'] for layer in self.layers)
+
+    @property
+    def defined_material_tags(self):
+        return {m['tag'] for m in self.materials}
+
+    @property
+    def used_material_tags(self):
+        tags = {f[3] for f in self.fibers}
+        tags |= {layer['material'] for layer in self.layers}
+        tags |= {p[1] for p in self.patches if len(p) > 1}
+        return tags
+
+    def materials_of(self, kind):
+        return [m for m in self.materials if m['kind'] == kind]
 
     @property
     def steel_positions(self):

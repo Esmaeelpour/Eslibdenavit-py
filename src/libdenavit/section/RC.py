@@ -1138,21 +1138,21 @@ class RC:
                     warnings.warn("Default value of tcast (0) used for creep and shrinkage material")
 
             if confinement:
-                ops.uniaxialMaterial('CreepShrinkageACI209', cover_concrete_creep_material_id, cover_concrete_material_id,
-                                     self.tD, shrinkagedata['eps_sh_u'], shrinkagedata['psish'], self.Tcr,
-                                     creepdata['phi_u'], creepdata['psicr1'], creepdata['psicr2'], self.tcast)
-                
-                ops.uniaxialMaterial('CreepShrinkageACI209', core_concrete_creep_material_id, core_concrete_material_id,
-                                     self.tD, shrinkagedata['eps_sh_u'], shrinkagedata['psish'], self.Tcr,
-                                     creepdata['phi_u'], creepdata['psicr1'], creepdata['psicr2'], self.tcast)
+                creep_pairs = ((cover_concrete_creep_material_id, cover_concrete_material_id),
+                               (core_concrete_creep_material_id, core_concrete_material_id))
             else:
-                ops.uniaxialMaterial('CreepShrinkageACI209', concrete_creep_material_id, concrete_material_id,
+                creep_pairs = ((concrete_creep_material_id, concrete_material_id),)
+
+            for creep_material_id, base_material_id in creep_pairs:
+                ops.uniaxialMaterial('CreepShrinkageACI209', creep_material_id, base_material_id,
                                      self.tD, shrinkagedata['eps_sh_u'], shrinkagedata['psish'], self.Tcr,
                                      creepdata['phi_u'], creepdata['psicr1'], creepdata['psicr2'], self.tcast)
 
-            cover_concrete_material_id = cover_concrete_creep_material_id
-            core_concrete_material_id = core_concrete_creep_material_id
-            concrete_material_id = concrete_creep_material_id
+            if confinement:
+                cover_concrete_material_id = cover_concrete_creep_material_id
+                core_concrete_material_id = core_concrete_creep_material_id
+            else:
+                concrete_material_id = concrete_creep_material_id
         # endregion
 
         # region Define fibers and patches

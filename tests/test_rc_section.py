@@ -392,3 +392,67 @@ class TestEndToEnd:
         _, Mx, _ = section.section_interaction_2d('x', 8)
         _, My, _ = section.section_interaction_2d('y', 8)
         assert not np.allclose(Mx, My), 'a 30x20 section is not axis-symmetric'
+
+
+class TestMaterialConstruction:
+    """Material ids, wrapper bases and argument ordering."""
+
+    CASES = [(False, 'Concrete04_no_confinement'), (True, 'Concrete04')]
+
+    @pytest.mark.parametrize('confined,conc', CASES)
+    @pytest.mark.parametrize('creep', [False, True])
+    def test_every_used_material_is_defined(self, record_section, confined, conc, creep):
+        rec = record_section(make_rect(confined=confined), 'x',
+                             conc_mat_type=conc, creep=creep)
+        assert rec.used_material_tags <= rec.defined_material_tags
+
+    @pytest.mark.parametrize('confined,conc', CASES)
+    def test_creep_wrappers_reference_defined_bases(self, record_section, confined, conc):
+        rec = record_section(make_rect(confined=confined), 'x',
+                             conc_mat_type=conc, creep=True)
+        wrappers = rec.materials_of('CreepShrinkageACI209')
+        assert wrappers, 'creep=True must define wrapper materials'
+        for wrapper in wrappers:
+            base = wrapper['args'][0]      # first argument is the wrapped material
+            assert base in rec.defined_material_tags
+            assert base != wrapper['tag'], 'a wrapper must not wrap itself'
+
+    @pytest.mark.parametrize('confined,conc', CASES)
+    def test_creep_and_non_creep_use_distinct_ids(self, record_section, confined, conc):
+        plain = record_section(make_rect(confined=confined), 'x', conc_mat_type=conc)
+        crept = record_section(make_rect(confined=confined), 'x',
+                               conc_mat_type=conc, creep=True)
+        assert crept.used_material_tags != plain.used_material_tags
+        assert len({m['tag'] for m in crept.materials}) == len(crept.materials), \
+            'each material id may only be defined once'
+
+    def test_confined_creep_wraps_cover_and_core_separately(self, record_section):
+        rec = record_section(make_rect(confined=True), 'x',
+                             conc_mat_type='Concrete04', creep=True)
+        bases = [w['args'][0] for w in rec.materials_of('CreepShrinkageACI209')]
+        assert len(bases) == 2 and len(set(bases)) == 2
+
+    def test_unconfined_creep_defines_one_wrapper(self, record_section):
+        rec = record_section(make_rect(), 'x',
+                             conc_mat_type='Concrete04_no_confinement', creep=True)
+        assert len(rec.materials_of('CreepShrinkageACI209')) == 1
+
+    def test_confined_core_is_stronger_than_cover(self, record_section):
+        """Cover uses fc, core uses the confined fcc; both compression negative."""
+        rec = record_section(make_rect(confined=True), 'x', conc_mat_type='Concrete04')
+        strengths = [m['args'][0] for m in rec.materials_of('Concrete04')]
+        assert len(strengths) == 2
+        assert all(f < 0 for f in strengths), 'compression must be negative'
+        assert min(strengths) < max(strengths), 'core must exceed cover in magnitude'
+
+    @pytest.mark.parametrize('conc_mat_type', [
+        'Concrete04_no_confinement', 'Concrete01_no_confinement', 'ENT', 'Elastic',
+    ])
+    def test_unconfined_material_types_build(self, record_section, conc_mat_type):
+        rec = record_section(make_rect(), 'x', conc_mat_type=conc_mat_type)
+        assert rec.materials and (rec.fibers or rec.layers)
+
+    @pytest.mark.parametrize('factory', [make_rect, make_circle, make_obround])
+    def test_confined_material_builds_for_every_shape(self, record_section, factory):
+        rec = record_section(factory(confined=True), 'x', conc_mat_type='Concrete04')
+        assert len(rec.materials_of('Concrete04')) == 2, 'cover and core'
