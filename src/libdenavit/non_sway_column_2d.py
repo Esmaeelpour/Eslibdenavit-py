@@ -121,14 +121,26 @@ class NonSwayColumn2d(Column2d):
         return p0
 
 
-    def _ecc_sign(self):
-        return int(np.sign(max(self.et, self.eb, key=abs)))
-
-
     @property
-    def _double_curvature(self):
-        """True if the end eccentricities bend the column in double curvature."""
-        return self.et * self.eb < 0
+    def _oriented_ecc(self):
+        """
+        End eccentricities (et, eb) oriented so the dominant one is non-negative.
+
+        All applied end moments are built from these, so the column always bends
+        toward +x -- the direction of the initial imperfection and of the
+        displacement-control DOF. Orienting by the dominant (largest magnitude)
+        eccentricity rather than by et alone is what keeps a nonzero eb from
+        being zeroed out when et == 0.
+
+        Both ends are scaled by the same sign, so magnitudes and relative sign
+        are preserved. Callers read the two cases they need straight off the
+        returned pair:
+
+            et * eb < 0          -> double curvature
+            abs(et) >= abs(eb)   -> the top end dominates
+        """
+        sign = int(np.sign(max(self.et, self.eb, key=abs)))
+        return self.et * sign, self.eb * sign
 
 
     def _initialize_results(self):
@@ -608,7 +620,7 @@ class NonSwayColumn2d(Column2d):
         ops.pattern('Plain', 200, 100)
 
         
-        ecc_sign = self._ecc_sign()
+        et, eb = self._oriented_ecc
 
         ops.constraints('Plain')
         ops.numberer('RCM')
@@ -624,11 +636,11 @@ class NonSwayColumn2d(Column2d):
             ops.load(0, 0, 0, 0.0)                 # no moment
             ops.integrator('LoadControl', dF)
         else:
-            ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
-            ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
+            ops.load(self.ops_n_elem, 0, -1, et * config['e'])
+            ops.load(0, 0, 0, -eb * config['e'])
         
-            if self._double_curvature:
-                if max(self.et, self.eb, key=abs) == self.et:
+            if et * eb < 0:
+                if abs(et) >= abs(eb):
                     dof = 3 * self.ops_n_elem // 4
                 else:
                     dof = 1 * self.ops_n_elem // 4
@@ -646,8 +658,8 @@ class NonSwayColumn2d(Column2d):
             section_strains = ops_get_section_strains(self)
 
             results.applied_axial_load.append(time)
-            results.applied_moment_top.append(self.et * config['e'] * time * ecc_sign)
-            results.applied_moment_bot.append(-self.eb * config['e'] * time * ecc_sign)
+            results.applied_moment_top.append(et * config['e'] * time)
+            results.applied_moment_bot.append(-eb * config['e'] * time)
             results.maximum_abs_moment.append(ops_get_maximum_abs_moment(self))
             results.maximum_abs_disp.append(ops_get_maximum_abs_disp(self))
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
@@ -672,8 +684,9 @@ class NonSwayColumn2d(Column2d):
                       / max(1, config['num_steps_vertical']) / div_factor)
                 ops.integrator('LoadControl', dF)
                 return
-            if self._double_curvature:
-                if max(self.et, self.eb, key=abs) == self.et:
+            et, eb = self._oriented_ecc
+            if et * eb < 0:
+                if abs(et) >= abs(eb):
                     dof = 3 * self.ops_n_elem // 4
                 else:
                     dof = 1 * self.ops_n_elem // 4
@@ -756,7 +769,7 @@ class NonSwayColumn2d(Column2d):
         # region Determine the sign of the eccentricity
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        ecc_sign = self._ecc_sign()
+        et, eb = self._oriented_ecc
         # endregion
 
         # region Define recorder
@@ -781,8 +794,8 @@ class NonSwayColumn2d(Column2d):
                 sys.stderr = original_stderr
 
             results.applied_axial_load.append(time + lam)
-            results.applied_moment_top.append(self.et * config['e'] * (time + lam) * ecc_sign)
-            results.applied_moment_bot.append(-self.eb * config['e'] * (time + lam) * ecc_sign)
+            results.applied_moment_top.append(et * config['e'] * (time + lam))
+            results.applied_moment_bot.append(-eb * config['e'] * (time + lam))
             results.maximum_abs_moment.append(ops_get_maximum_abs_moment(self))
             results.maximum_abs_disp.append(ops_get_maximum_abs_disp(self))
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
@@ -821,8 +834,8 @@ class NonSwayColumn2d(Column2d):
 
         ops.timeSeries('Linear', 100)
         ops.pattern('Plain', 200, 100, '-factor', 1)
-        ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
-        ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
+        ops.load(self.ops_n_elem, 0, -1, et * config['e'])
+        ops.load(0, 0, 0, -eb * config['e'])
         
         while t < tfinish:
             # Apply sustained load at Tcr
@@ -920,8 +933,9 @@ class NonSwayColumn2d(Column2d):
                 ops.integrator('LoadControl', dF)
             else:
                 # bending present: DisplacementControl as before
-                if self._double_curvature:
-                    dof = 3 * self.ops_n_elem // 4 if abs(self.et) >= abs(self.eb) else 1 * self.ops_n_elem // 4
+                et, eb = self._oriented_ecc
+                if et * eb < 0:
+                    dof = 3 * self.ops_n_elem // 4 if abs(et) >= abs(eb) else 1 * self.ops_n_elem // 4
                     dU = self.length * disp_incr_factor / 2 / div_factor
                     ops.integrator('DisplacementControl', dof, 1, dU)
                 else:
@@ -951,18 +965,18 @@ class NonSwayColumn2d(Column2d):
             ops.load(0, 0, 0, 0)
             ops.integrator('LoadControl', dF)
         elif sgn_et != sgn_eb:
-            if max(self.et, self.eb, key=abs) == self.et:
+            if abs(et) >= abs(eb):
                 dof = 3 * self.ops_n_elem // 4
             else:
                 dof = 1 * self.ops_n_elem // 4
             dU = self.length * config['disp_incr_factor'] / 20
-            ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
-            ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
+            ops.load(self.ops_n_elem, 0, -1, et * config['e'])
+            ops.load(0, 0, 0, -eb * config['e'])
             ops.integrator('DisplacementControl', dof, 1, dU)
         else:
             dU = self.length * config['disp_incr_factor'] / 10
-            ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
-            ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
+            ops.load(self.ops_n_elem, 0, -1, et * config['e'])
+            ops.load(0, 0, 0, -eb * config['e'])
             ops.integrator('DisplacementControl', self.ops_mid_node, 1, dU)
 
         ops.constraints('Plain')
@@ -1035,8 +1049,9 @@ class NonSwayColumn2d(Column2d):
     def _run_ops_nonproportional_limit_point(self, config, results):
         """Run nonproportional limit point analysis."""
         def update_dU(disp_incr_factor, div_factor=1):
-            if self._double_curvature:
-                if max(self.et, self.eb, key=abs) == self.et:
+            et, eb = self._oriented_ecc
+            if et * eb < 0:
+                if abs(et) >= abs(eb):
                     dof = 3 * self.ops_n_elem // 4
                 else:
                     dof = 1 * self.ops_n_elem // 4
@@ -1121,21 +1136,21 @@ class NonSwayColumn2d(Column2d):
         ops.timeSeries('Linear', 101)
         ops.pattern('Plain', 201, 101)
         
-        ecc_sign = self._ecc_sign()
+        et, eb = self._oriented_ecc
 
-        if self._double_curvature:
-            if max(self.et, self.eb, key=abs) == self.et:
+        if et * eb < 0:
+            if abs(et) >= abs(eb):
                 dof = 3 * self.ops_n_elem // 4
             else:
                 dof = 1 * self.ops_n_elem // 4
             dU = self.length * config['disp_incr_factor'] / 2
-            ops.load(self.ops_n_elem, 0, 0, self.et * config['e'] * ecc_sign)
-            ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
+            ops.load(self.ops_n_elem, 0, 0, et * config['e'])
+            ops.load(0, 0, 0, -eb * config['e'])
             ops.integrator('DisplacementControl', dof, 1, dU)
         else:
             dU = self.length * config['disp_incr_factor']
-            ops.load(self.ops_n_elem, 0, 0, self.et * config['e'] * ecc_sign)
-            ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
+            ops.load(self.ops_n_elem, 0, 0, et * config['e'])
+            ops.load(0, 0, 0, -eb * config['e'])
             ops.integrator('DisplacementControl', self.ops_mid_node, 1, dU)
         
         ops.analysis('Static', '-noWarnings')
@@ -1146,8 +1161,8 @@ class NonSwayColumn2d(Column2d):
             section_strains = ops_get_section_strains(self)
 
             results.applied_axial_load.append(config['P'])
-            results.applied_moment_top.append(self.et * config['e'] * time * ecc_sign)
-            results.applied_moment_bot.append(-self.eb * config['e'] * time * ecc_sign)
+            results.applied_moment_top.append(et * config['e'] * time)
+            results.applied_moment_bot.append(-eb * config['e'] * time)
             results.maximum_abs_moment.append(ops_get_maximum_abs_moment(self))
             results.maximum_abs_disp.append(ops_get_maximum_abs_disp(self))
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
@@ -1324,7 +1339,7 @@ class NonSwayColumn2d(Column2d):
 
         
         #region Determine eccentricity sign
-        ecc_sign = self._ecc_sign()
+        et, eb = self._oriented_ecc
         #endregion
 
         
@@ -1366,8 +1381,8 @@ class NonSwayColumn2d(Column2d):
             ops.pattern('Plain', 200, 100)
             
             # Applied loads proportional to load factor (time)
-            ops.load(self.ops_n_elem, 0, -1, self.et * e * ecc_sign)
-            ops.load(0, 0, 0, -self.eb * e * ecc_sign)
+            ops.load(self.ops_n_elem, 0, -1, et * e)
+            ops.load(0, 0, 0, -eb * e)
             
             ops.constraints('Plain')
             ops.numberer('RCM')
@@ -1376,13 +1391,13 @@ class NonSwayColumn2d(Column2d):
             ops.algorithm('Newton')
             
             # Determine displacement control node
-            if e == 0.0 or (abs(self.et) < 1e-12 and abs(self.eb) < 1e-12):
+            if e == 0.0 or (abs(et) < 1e-12 and abs(eb) < 1e-12):
                 dF = 1/num_steps_vertical
                 ops.integrator('LoadControl', dF)
             else:
                 # Determine displacement control node
-                if self._double_curvature:
-                    if abs(self.et) >= abs(self.eb):
+                if et * eb < 0:
+                    if abs(et) >= abs(eb):
                         control_node = 3 * self.ops_n_elem // 4
                     else:
                         control_node = 1 * self.ops_n_elem // 4
@@ -1399,8 +1414,8 @@ class NonSwayColumn2d(Column2d):
             def record_prop():
                 time = ops.getTime()
                 results.applied_axial_load.append(time)
-                results.applied_moment_top.append(self.et * e * time * ecc_sign)
-                results.applied_moment_bot.append(-self.eb * e * time * ecc_sign)
+                results.applied_moment_top.append(et * e * time)
+                results.applied_moment_bot.append(-eb * e * time)
                 record()
             
             record_prop()
@@ -1471,7 +1486,7 @@ class NonSwayColumn2d(Column2d):
                         break
                 
                 if max_1_4_Mu_limit is True:
-                    if (e != 0 or (abs(self.et) > 1e-12 and abs(self.eb) > 1e-12)) and \
+                    if (e != 0 or (abs(et) > 1e-12 and abs(eb) > 1e-12)) and \
                        max(abs(results.applied_moment_top[-1] * 1.4), abs(results.applied_moment_bot[-1] * 1.4)) != 0:
                         if max(abs(results.applied_moment_top[-1] * 1.4),
                                abs(results.applied_moment_bot[-1] * 1.4)) <= results.maximum_abs_moment[-1]:
@@ -1543,7 +1558,7 @@ class NonSwayColumn2d(Column2d):
                 time_offset = ops.getTime() 
                 
                 # Check if axial-only column
-                is_axial_only = abs(self.et) < 1e-10 and abs(self.eb) < 1e-10
+                is_axial_only = abs(et) < 1e-10 and abs(eb) < 1e-10
                 
                 if is_axial_only:
                     # Apply unit moments for axial-only columns
@@ -1551,12 +1566,12 @@ class NonSwayColumn2d(Column2d):
                     ops.load(0, 0, 0, -1.0)
                 else:
                     # Normal columns with eccentricity
-                    ops.load(self.ops_n_elem, 0, 0, self.et * e * ecc_sign)
-                    ops.load(0, 0, 0, -self.eb * e * ecc_sign)
+                    ops.load(self.ops_n_elem, 0, 0, et * e)
+                    ops.load(0, 0, 0, -eb * e)
                     
                 # Determine control node and apply moments
-                if self._double_curvature:
-                    if abs(self.et) >= abs(self.eb):
+                if et * eb < 0:
+                    if abs(et) >= abs(eb):
                         control_node = 3 * self.ops_n_elem // 4
                     else:
                         control_node = 1 * self.ops_n_elem // 4
@@ -1580,8 +1595,8 @@ class NonSwayColumn2d(Column2d):
                         results.applied_moment_bot.append(-time)
                     else:
                         # Normal columns
-                        results.applied_moment_top.append(self.et * e * time * ecc_sign)
-                        results.applied_moment_bot.append(-self.eb * e * time * ecc_sign)
+                        results.applied_moment_top.append(et * e * time)
+                        results.applied_moment_bot.append(-eb * e * time)
                     record()
                 
                 record_stage2()
@@ -1662,7 +1677,7 @@ class NonSwayColumn2d(Column2d):
                     
                     if max_1_4_Mu_limit:
                         # Check for 1.4 Mu limit
-                        if self.et == 0 and self.eb == 0:
+                        if et == 0 and eb == 0:
                             continue  # Skip for axial-only columns
                         applied_1_4_Mu = max(abs(results.applied_moment_top[-1] * 1.4),
                                              abs(results.applied_moment_bot[-1] * 1.4))
@@ -1685,7 +1700,7 @@ class NonSwayColumn2d(Column2d):
         logger.debug(f'Applied bottom moments: {results.applied_moment_bot}')
         logger.debug(f'Maximum absolute moments: {results.maximum_abs_moment}')
         logger.debug(f'Maximum absolute displacements: {results.maximum_abs_disp}')
-        logger.debug(f'et: {self.et}, eb: {self.eb}, e: {e}, ecc_sign: {ecc_sign}')
+        logger.debug(f'et: {self.et}, eb: {self.eb}, e: {e}, oriented: {(et, eb)}')
         
         
         #region Find limit point
@@ -1716,7 +1731,7 @@ class NonSwayColumn2d(Column2d):
                 M_check_result = section_interaction.find_x_given_y(P_check, 'pos')
                 M_check = M_check_result[0] if isinstance(M_check_result, list) else M_check_result
             except Exception as exc:
-                if e==0 or (abs(self.et) < 1e-12 and abs(self.eb) < 1e-12):
+                if e==0 or (abs(et) < 1e-12 and abs(eb) < 1e-12):
                     logger.debug(f'find_x_given_y failed for axial-only case, defaulting M_check to 0: {exc}')
                     M_check = 0.0
                 else:
