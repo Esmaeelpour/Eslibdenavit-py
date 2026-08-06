@@ -1773,6 +1773,7 @@ class NonSwayColumn2d(Column2d):
             'proportional_limit_point',
             e=0,
             section_id=section_id,
+            section_factored=section_factored,
             disp_incr_factor=prop_disp_incr_factor)
 
         P_cr_elastic = results_pcr.applied_axial_load_at_limit_point
@@ -1822,6 +1823,7 @@ class NonSwayColumn2d(Column2d):
                     P=iP,
                     e=e,
                     section_id=section_id,
+                    section_factored=section_factored,
                     disp_incr_factor=nonprop_disp_incr_factor
                 )
 
