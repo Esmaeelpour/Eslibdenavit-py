@@ -1277,6 +1277,12 @@ class NonSwayColumn2d(Column2d):
         deformation_limit = kwargs.get('deformation_limit', 0.1 * self.length)
         max_1_4_Mu_limit = kwargs.get('max_1_4_Mu_limit', True)
         section_factored = kwargs.get('section_factored', False)
+        # ACI 318-19 (6.6.4.5.4) covers member out-of-straightness through the
+        # minimum moment Mmin = Pu*(0.6 + 0.03h). This routine emulates the code
+        # procedure, so it builds the column straight by default rather than
+        # also applying self.dxo, which would count the same effect twice. Pass
+        # include_imperfection=True to model dxo explicitly instead.
+        include_imperfection = kwargs.get('include_imperfection', False)
         #endregion
 
 
@@ -1304,12 +1310,12 @@ class NonSwayColumn2d(Column2d):
         ops.wipe()
         ops.model('basic', '-ndm', 2, '-ndf', 3)
         
-        # Create nodes with imperfection if specified
+        # Create nodes, straight unless an explicit imperfection is requested
         for i in range(self.ops_n_elem + 1):
-            if isinstance(self.dxo, (int, float)):
-                x = sin(i / self.ops_n_elem * pi) * self.dxo
-            elif self.dxo is None:
+            if not include_imperfection or self.dxo is None:
                 x = 0.0
+            elif isinstance(self.dxo, (int, float)):
+                x = sin(i / self.ops_n_elem * pi) * self.dxo
             else:
                 raise ValueError(f'Unknown value of dxo ({self.dxo})')
             y = i / self.ops_n_elem * self.length
