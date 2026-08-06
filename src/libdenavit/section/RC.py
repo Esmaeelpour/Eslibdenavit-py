@@ -457,6 +457,9 @@ class RC:
     _BUILTIN_EI_TYPES = ('aci-a', 'aci-b', 'aci-c', 'jf-a', 'jf-b', 'gross',
                          'proposed_1_1', 'proposed_1_2', 'proposed_2')
 
+    # Keyword arguments a custom EI callable always receives.
+    _EI_RESERVED_KWARGS = ('section', 'axis', 'betadns', 'P', 'M', 'col')
+
     @staticmethod
     def _as_load_arrays(EI_type, P, M, require_M=True):
         """Normalize P and M to float arrays; say whether the input was scalar."""
@@ -500,7 +503,57 @@ class RC:
         """Return a scalar for scalar input, otherwise the array unchanged."""
         return float(value[0]) if scalar_input else np.asarray(value)
 
-    def EIeff(self, axis, EI_type, betadns=0.0, P=None, M=None, col=None):
+    def _custom_EIeff(self, custom, axis, betadns, P, M, col, EI_kwargs):
+        """Evaluate a user supplied constant or callable effective stiffness."""
+        EI_kwargs = dict(EI_kwargs or {})
+
+        if callable(custom):
+            clashes = sorted(set(EI_kwargs) & set(self._EI_RESERVED_KWARGS))
+            if clashes:
+                raise ValueError(
+                    f'EI_kwargs may not override the reserved arguments '
+                    f'{clashes}; they are always supplied by EIeff.')
+            value = custom(section=self, axis=axis, betadns=betadns,
+                           P=P, M=M, col=col, **EI_kwargs)
+        else:
+            if EI_kwargs:
+                raise ValueError(
+                    'EI_kwargs is only meaningful when the custom EI is callable; '
+                    f'got a {type(custom).__name__}.')
+            value = custom
+
+        try:
+            value = np.asarray(value, dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'Custom EI must be numeric, got {value!r}') from exc
+
+        if value.size == 0:
+            raise ValueError('Custom EI must not be empty')
+        if not np.all(np.isfinite(value)):
+            raise ValueError(f'Custom EI must be finite, got {value!r}')
+        if np.any(value <= 0):
+            raise ValueError(f'Custom EI must be positive, got {value!r}')
+
+        # Match the shape implied by the loads, if any were supplied.
+        load_shape = ()
+        for load in (P, M):
+            if load is not None:
+                load_shape = np.broadcast_shapes(
+                    load_shape, np.asarray(load, dtype=float).shape)
+
+        if value.ndim == 0:
+            if load_shape == ():
+                return float(value)
+            return np.broadcast_to(value, load_shape).copy()
+
+        if load_shape not in ((), value.shape):
+            raise ValueError(
+                f'Custom EI shape {value.shape} does not match the load shape '
+                f'{load_shape}')
+        return value
+
+    def EIeff(self, axis, EI_type=None, betadns=0.0, P=None, M=None, col=None,
+              EI=None, EI_kwargs=None):
         """Effective flexural stiffness.
 
         Parameters
@@ -510,7 +563,8 @@ class RC:
         EI_type : str
             One of: aci-a, aci-b, aci-c, jf-a, jf-b, gross, proposed_1_1,
             proposed_1_2, proposed_2. Case and spaces are ignored. A
-            '<module>,<arg>' string resolves a function from that module.
+            '<module>,<arg>' string resolves a function from that module. A
+            non-string value is treated as a custom EI.
         betadns : float
             Sustained load ratio. Must be greater than -1.
         P, M : scalar or array-like, optional
@@ -518,12 +572,40 @@ class RC:
             Scalar in, scalar out; array in, array out.
         col : object, optional
             Column, required by proposed_2.
+        EI : float or callable, optional
+            Custom effective stiffness. A constant is used directly. A callable
+            is invoked with the reserved keyword arguments section, axis,
+            betadns, P, M and col, plus anything in EI_kwargs, and must return
+            a finite positive stiffness.
+        EI_kwargs : dict, optional
+            Extra keyword arguments for a callable EI. Rejected for a constant
+            EI, and may not shadow the reserved names.
 
         Notes
         -----
         P == 0 with M != 0 returns the method lower bound. P == 0 with
         M == 0 returns NaN.
         """
+        # --- custom effective stiffness -----------------------------------
+        custom = None
+        if EI is not None and EI_type is not None and not isinstance(EI_type, str):
+            raise ValueError(
+                'Provide a custom EI through either EI or a non-string EI_type, '
+                'not both.')
+        if EI is not None:
+            custom = EI
+        elif EI_type is not None and not isinstance(EI_type, str):
+            custom = EI_type
+
+        if custom is not None:
+            return self._custom_EIeff(custom, axis, betadns, P, M, col, EI_kwargs)
+
+        if EI_type is None:
+            raise ValueError('EI_type or EI must be provided')
+
+        if EI_kwargs:
+            raise ValueError('EI_kwargs is only meaningful together with a custom EI')
+
         # --- shared validation --------------------------------------------
         if 1 + betadns <= 0:
             raise ValueError(
@@ -628,7 +710,7 @@ class RC:
         except ValueError as exc:
             raise ValueError(
                 f'Unknown EI_type {EI_type!r}. Expected one of '
-                f"{', '.join(self._BUILTIN_EI_TYPES)}, or "
+                f"{', '.join(self._BUILTIN_EI_TYPES)}, a custom EI, or "
                 f"'<module>,<argument>' naming a module that defines a function "
                 f'of the same name.') from exc
 

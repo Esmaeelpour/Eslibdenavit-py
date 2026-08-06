@@ -543,3 +543,101 @@ class TestEIeffNormalization:
     @pytest.mark.parametrize('betadns', [0.0, 0.6, -0.5])
     def test_valid_betadns_gives_positive_stiffness(self, rect, betadns):
         assert rect.EIeff('x', 'aci-a', betadns) > 0
+
+
+class TestCustomEIeff:
+    """Constant and callable user supplied stiffness."""
+
+    @staticmethod
+    def _custom(section, axis, betadns, P, M, col, reduction=0.45):
+        return reduction * section.Ec * section.Ig(axis) / (1.0 + betadns)
+
+    def test_constant(self, rect):
+        assert rect.EIeff('x', EI=1.25e8) == pytest.approx(1.25e8)
+
+    def test_numpy_scalar_constant(self, rect):
+        assert rect.EIeff('x', EI=np.float64(1.25e8)) == pytest.approx(1.25e8)
+
+    def test_non_string_EI_type_is_custom(self, rect):
+        assert rect.EIeff('x', 1.25e8) == pytest.approx(1.25e8)
+
+    def test_callable(self, rect):
+        expected = 0.45 * rect.Ec * rect.Ig('x')
+        assert rect.EIeff('x', P=100.0, M=500.0,
+                          EI=self._custom) == pytest.approx(expected)
+
+    def test_callable_with_kwargs(self, rect):
+        expected = 0.50 * rect.Ec * rect.Ig('x')
+        got = rect.EIeff('x', P=100.0, M=500.0, EI=self._custom,
+                         EI_kwargs={'reduction': 0.50})
+        assert got == pytest.approx(expected)
+
+    def test_callable_receives_reserved_arguments(self, rect):
+        seen = {}
+
+        def spy(section, axis, betadns, P, M, col):
+            seen.update(section=section, axis=axis, betadns=betadns,
+                        P=P, M=M, col=col)
+            return 1.0e8
+
+        rect.EIeff('x', betadns=0.3, P=100.0, M=500.0, col='COL', EI=spy)
+        assert seen['section'] is rect and seen['axis'] == 'x'
+        assert seen['betadns'] == 0.3 and seen['P'] == 100.0
+        assert seen['M'] == 500.0 and seen['col'] == 'COL'
+
+    def test_scalar_result_broadcasts_over_array_loads(self, rect):
+        values = rect.EIeff('x', P=np.array([1.0, 2.0, 3.0]),
+                            M=np.array([1.0, 2.0, 3.0]), EI=1.0e8)
+        assert values.shape == (3,) and np.all(values == 1.0e8)
+
+    def test_matching_array_result_accepted(self, rect):
+        values = rect.EIeff('x', P=np.array([1.0, 2.0]), M=np.array([1.0, 2.0]),
+                            EI=np.array([1.0e8, 2.0e8]))
+        assert np.array_equal(values, np.array([1.0e8, 2.0e8]))
+
+    def test_mismatched_array_result_rejected(self, rect):
+        with pytest.raises(ValueError, match='does not match the load shape'):
+            rect.EIeff('x', P=np.array([1.0, 2.0]), M=np.array([1.0, 2.0]),
+                       EI=np.array([1.0e8, 2.0e8, 3.0e8]))
+
+    @pytest.mark.parametrize('bad,match', [
+        (-1.0, 'positive'), (0.0, 'positive'),
+        (float('nan'), 'finite'), (float('inf'), 'finite'),
+        ('abc', 'numeric'),
+    ])
+    def test_invalid_values_rejected(self, rect, bad, match):
+        with pytest.raises(ValueError, match=match):
+            rect.EIeff('x', EI=bad)
+
+    def test_empty_result_rejected(self, rect):
+        with pytest.raises(ValueError, match='must not be empty'):
+            rect.EIeff('x', EI=np.array([]))
+
+    @pytest.mark.parametrize('reserved',
+                             ['section', 'axis', 'betadns', 'P', 'M', 'col'])
+    def test_reserved_kwarg_collision_rejected(self, rect, reserved):
+        with pytest.raises(ValueError, match='reserved'):
+            rect.EIeff('x', P=1.0, M=1.0, EI=self._custom, EI_kwargs={reserved: 1})
+
+    def test_kwargs_with_constant_rejected(self, rect):
+        with pytest.raises(ValueError, match='only meaningful when'):
+            rect.EIeff('x', EI=1.0e8, EI_kwargs={'reduction': 0.5})
+
+    def test_both_custom_channels_rejected(self, rect):
+        with pytest.raises(ValueError, match='not both'):
+            rect.EIeff('x', 1.25e8, EI=1.0e8)
+
+    def test_missing_everything_rejected(self, rect):
+        with pytest.raises(ValueError, match='must be provided'):
+            rect.EIeff('x')
+
+    def test_callable_errors_propagate(self, rect):
+        def boom(**kwargs):
+            raise RuntimeError('inside the custom callable')
+
+        with pytest.raises(RuntimeError, match='inside the custom callable'):
+            rect.EIeff('x', P=1.0, M=1.0, EI=boom)
+
+    def test_unknown_string_lists_the_builtins(self, rect):
+        with pytest.raises(ValueError, match='aci-a'):
+            rect.EIeff('x', 'no-such-method')
