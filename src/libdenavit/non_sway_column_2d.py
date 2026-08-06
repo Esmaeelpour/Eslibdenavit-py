@@ -1088,10 +1088,10 @@ class NonSwayColumn2d(Column2d):
                 )
             if exit_message:
                 results.exit_message = exit_message
-                break
-            
+                return results
+
         # endregion
-        
+
         # region Run lateral load (time = LFH)
         ops.loadConst('-time', 0.0)
         ops.timeSeries('Linear', 101)
@@ -1521,8 +1521,7 @@ class NonSwayColumn2d(Column2d):
                     break
                 
             
-            # If Stage 1 failed, skip Stage 2
-            if not 'Material Strength Limit' in results.exit_message:
+            if results.exit_message == "":
                 # Stage 2: Apply lateral load while maintaining axial
                 ops.loadConst('-time', 0.0)
                 ops.timeSeries('Linear', 101)
