@@ -456,3 +456,90 @@ class TestMaterialConstruction:
     def test_confined_material_builds_for_every_shape(self, record_section, factory):
         rec = record_section(factory(confined=True), 'x', conc_mat_type='Concrete04')
         assert len(rec.materials_of('Concrete04')) == 2, 'cover and core'
+
+
+LOAD_DEPENDENT = ['aci-c', 'jf-a', 'jf-b']
+
+
+class TestEIeffNormalization:
+    """P and M accept any numeric form; scalars in, scalars out."""
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    @pytest.mark.parametrize('P,M', [(100, 500), (100.0, 500.0),
+                                     (np.float64(100), np.float64(500)),
+                                     (np.int64(100), np.int64(500))])
+    def test_scalar_forms_agree(self, rect, EI_type, P, M):
+        """Integer input used to fall through and report an unknown EI_type."""
+        reference = rect.EIeff('x', EI_type, 0.0, P=100.0, M=500.0)
+        assert rect.EIeff('x', EI_type, 0.0, P=P, M=M) == pytest.approx(reference)
+        assert np.isscalar(rect.EIeff('x', EI_type, 0.0, P=P, M=M))
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    @pytest.mark.parametrize('container', [list, tuple, np.array])
+    def test_sequence_forms_agree(self, rect, EI_type, container):
+        values = rect.EIeff('x', EI_type, 0.0,
+                            P=container([100.0, 200.0]), M=container([500.0, 600.0]))
+        assert isinstance(values, np.ndarray) and values.shape == (2,)
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    def test_one_element_array_matches_scalar(self, rect, EI_type):
+        scalar = rect.EIeff('x', EI_type, 0.0, P=100.0, M=500.0)
+        array = rect.EIeff('x', EI_type, 0.0, P=np.array([100.0]), M=np.array([500.0]))
+        assert array[0] == pytest.approx(scalar, rel=1e-12)
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    def test_scalar_broadcasts_against_array(self, rect, EI_type):
+        values = rect.EIeff('x', EI_type, 0.0, P=np.array([100.0, 200.0]), M=500.0)
+        assert values.shape == (2,)
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    def test_incompatible_shapes_rejected(self, rect, EI_type):
+        with pytest.raises(ValueError, match='compatible shapes'):
+            rect.EIeff('x', EI_type, 0.0,
+                       P=np.array([1.0, 2.0]), M=np.array([1.0, 2.0, 3.0]))
+
+    @pytest.mark.parametrize('EI_type,bound',
+                             [('aci-c', 0.35), ('jf-a', 0.30), ('jf-b', 0.40)])
+    def test_pure_bending_returns_the_lower_bound(self, rect, EI_type, bound):
+        """P approaching 0 drives each method past its lower bound."""
+        expected = bound * rect.Ec * rect.Ig('x')
+        assert rect.EIeff('x', EI_type, 0.0, P=0.0, M=500.0) == pytest.approx(expected)
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    def test_no_load_at_all_is_undefined(self, rect, EI_type):
+        assert np.isnan(rect.EIeff('x', EI_type, 0.0, P=0.0, M=0.0))
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    def test_pure_bending_is_continuous(self, rect, EI_type):
+        near = rect.EIeff('x', EI_type, 0.0, P=1e-9, M=500.0)
+        at = rect.EIeff('x', EI_type, 0.0, P=0.0, M=500.0)
+        assert at == pytest.approx(near, rel=1e-12)
+
+    @pytest.mark.parametrize('name', ['ACI-C', ' aci-c ', 'Jf-A', ' GROSS'])
+    def test_names_are_case_and_whitespace_insensitive(self, rect, name):
+        assert np.isfinite(rect.EIeff('x', name, 0.0, P=100.0, M=500.0))
+
+    def test_jfb_scalar_and_array_agree(self, rect):
+        """The array path used signed M/P where the scalar path used magnitudes."""
+        scalar = rect.EIeff('x', 'jf-b', 0.0, P=100.0, M=500.0)
+        array = rect.EIeff('x', 'jf-b', 0.0, P=np.array([100.0]), M=np.array([500.0]))
+        assert array[0] == pytest.approx(scalar, rel=1e-15)
+
+    @pytest.mark.parametrize('EI_type', LOAD_DEPENDENT)
+    def test_missing_loads_reported_clearly(self, rect, EI_type):
+        with pytest.raises(ValueError, match='must be defined'):
+            rect.EIeff('x', EI_type, 0.0)
+
+    def test_proposed_2_requires_col(self, rect):
+        with pytest.raises(ValueError, match='col must be defined'):
+            rect.EIeff('x', 'proposed_2', 0.0, P=100.0, M=500.0)
+
+    @pytest.mark.parametrize('betadns', [-1.0, -2.0])
+    def test_betadns_at_or_below_minus_one_rejected(self, rect, betadns):
+        """betadns of -2 silently returned a negative stiffness."""
+        with pytest.raises(ValueError, match='betadns must be greater than -1'):
+            rect.EIeff('x', 'aci-a', betadns)
+
+    @pytest.mark.parametrize('betadns', [0.0, 0.6, -0.5])
+    def test_valid_betadns_gives_positive_stiffness(self, rect, betadns):
+        assert rect.EIeff('x', 'aci-a', betadns) > 0

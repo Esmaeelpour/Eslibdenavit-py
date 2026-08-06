@@ -453,195 +453,196 @@ class RC:
     def EIgross(self, axis):
         return self.Ec * self.Ic(axis) + self.Es * self.Isr(axis)
     
+    # Built-in effective stiffness methods.
+    _BUILTIN_EI_TYPES = ('aci-a', 'aci-b', 'aci-c', 'jf-a', 'jf-b', 'gross',
+                         'proposed_1_1', 'proposed_1_2', 'proposed_2')
+
+    @staticmethod
+    def _as_load_arrays(EI_type, P, M, require_M=True):
+        """Normalize P and M to float arrays; say whether the input was scalar."""
+        if P is None:
+            raise ValueError(f"P must be defined for EI_type = {EI_type!r}")
+        if require_M and M is None:
+            raise ValueError(f"M must be defined for EI_type = {EI_type!r}")
+
+        try:
+            P_array = np.asarray(P, dtype=float)
+            M_array = np.asarray(0.0 if M is None else M, dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f'P and M must be numeric for EI_type = {EI_type!r} '
+                f'(got P={P!r}, M={M!r})') from exc
+
+        try:
+            shape = np.broadcast_shapes(P_array.shape, M_array.shape)
+        except ValueError as exc:
+            raise ValueError(
+                f'P and M must have compatible shapes for EI_type = {EI_type!r} '
+                f'(got {P_array.shape} and {M_array.shape})') from exc
+
+        scalar_input = shape == ()
+        P_array = np.broadcast_to(P_array, shape)
+        M_array = np.broadcast_to(M_array, shape)
+        return np.atleast_1d(P_array), np.atleast_1d(M_array), scalar_input
+
+    @staticmethod
+    def _eccentricity_ratio(P, M, depth):
+        """abs(M) / abs(P) / depth.
+
+        P == 0 gives infinity, which pushes the method to its lower bound.
+        P == 0 with M == 0 gives NaN.
+        """
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return np.abs(M) / np.abs(P) / depth
+
+    @staticmethod
+    def _match_load_shape(value, scalar_input):
+        """Return a scalar for scalar input, otherwise the array unchanged."""
+        return float(value[0]) if scalar_input else np.asarray(value)
+
     def EIeff(self, axis, EI_type, betadns=0.0, P=None, M=None, col=None):
-        if EI_type.lower() == "aci-a":
+        """Effective flexural stiffness.
+
+        Parameters
+        ----------
+        axis : str
+            'x' or 'y'.
+        EI_type : str
+            One of: aci-a, aci-b, aci-c, jf-a, jf-b, gross, proposed_1_1,
+            proposed_1_2, proposed_2. Case and spaces are ignored. A
+            '<module>,<arg>' string resolves a function from that module.
+        betadns : float
+            Sustained load ratio. Must be greater than -1.
+        P, M : scalar or array-like, optional
+            Axial load and moment, required by the load-dependent methods.
+            Scalar in, scalar out; array in, array out.
+        col : object, optional
+            Column, required by proposed_2.
+
+        Notes
+        -----
+        P == 0 with M != 0 returns the method lower bound. P == 0 with
+        M == 0 returns NaN.
+        """
+        # --- shared validation --------------------------------------------
+        if 1 + betadns <= 0:
+            raise ValueError(
+                f'betadns must be greater than -1 because 1 + betadns divides the '
+                f'effective stiffness (got {betadns!r})')
+
+        key = EI_type.strip().lower()
+        Ig = self.Ig(axis)
+        Ec = self.Ec
+        creep_factor = 1 + betadns
+
+        # --- load independent methods -------------------------------------
+        if key == 'aci-a':
             # ACI 318-19, Section 6.6.4.4.4a
-            return 0.4 * self.Ec * self.Ig(axis) / (1 + betadns)
+            return 0.4 * Ec * Ig / creep_factor
 
-        elif EI_type.lower() == "aci-b":
+        if key == 'aci-b':
             # ACI 318-19, Section 6.6.4.4.4b
-            return (0.2 * self.Ec * self.Ig(axis) + self.Es * self.Isr(axis)) / (1 + betadns)
+            return (0.2 * Ec * Ig + self.Es * self.Isr(axis)) / creep_factor
 
-        elif EI_type.lower() == "aci-c":
-            # ACI 318-19, Section 6.6.4.4.4c
-            if P is None or M is None:
-                raise ValueError("P and M must be defined for EI_type = 'ACI-c'")
-            Ieff = []
-            max_I = 0.875 * self.Ig(axis)
-            min_I = 0.35 * self.Ig(axis)
-            if isinstance(P, (list, np.ndarray)):
-                for P, M in zip(P, M):
-                    I_ACI = (0.8 + 25 * self.Asr / self.Ag) * (
-                            1 - M / P / self.depth(axis) - 0.5 * P / self.p0) * self.Ig(axis)
-                    if I_ACI > max_I:
-                        Ieff.append(max_I)
-                    elif I_ACI < min_I:
-                        Ieff.append(min_I)
-                    else:
-                        Ieff.append(I_ACI)
-                EI = [i * self.Ec for i in Ieff]
-                return EI
-
-            elif isinstance(P, float):
-                I_ACI = (0.8 + 25 * self.Asr / self.Ag) * (
-                            1 - M / P / self.depth(axis) - 0.5 * P / self.p0) * self.Ig(axis)
-                if I_ACI > max_I:
-                    Ieff = max_I
-                elif I_ACI < min_I:
-                    Ieff = min_I
-                else:
-                    Ieff = I_ACI
-                EI = Ieff * self.Ec
-                return EI
-
-        elif EI_type.lower() == "jf-a":
-            # Jenkins and Frosch, 2011 - Eq.10.1
-            EI = []
-            if P is None or M is None:
-                raise ValueError("P and M must be defined for EI_type = 'JF-a'")
-            elif isinstance(P, (list, np.ndarray)) and isinstance(M, (list, np.ndarray)):
-                if len(P) != len(M):
-                    raise ValueError("P and M must be of the same size")
-                for P, M in zip(P, M):
-                    ecc_ratio = abs(M) / abs(P) / self.depth(axis)
-                    if ecc_ratio <= 0.1:
-                        EI_jenkins = (1.05 - 0.6 * abs(P) / self.p0) * (1 + 3 * (self.Asr / self.Ag - 0.01)) *\
-                                     self.Ec * self.Ig(axis) / (1 + betadns)
-                        min_EI = 0.3 * self.Ec * self.Ig(axis) / (1 + betadns)
-                        EI.append(max(EI_jenkins, min_EI))
-                    else:
-                        EI_jenkins = (1.05 - 0.6 * abs(P) / self.p0) * (1 + 3 * (self.Asr / self.Ag - 0.01)) * (
-                                1.2 - 2 * ecc_ratio) * self.Ec * self.Ig(axis) / (1 + betadns)
-                        min_EI = 0.3 * self.Ec * self.Ig(axis) / (1 + betadns)
-                        EI.append(max(EI_jenkins, min_EI))
-                return EI
-
-            elif isinstance(P, (float, np.float64, int)) and isinstance(M, (float, np.float64, int)):
-                try:
-                    ecc_ratio = abs(M) / abs(P) / self.depth(axis)
-                except ZeroDivisionError:
-                    return np.nan
-                if ecc_ratio <= 0.1:
-                    EI_jenkins = (1.05 - 0.6 * abs(P) / self.p0) * (1 + 3 * (self.Asr / self.Ag - 0.01)) * \
-                                 self.Ec * self.Ig(axis) / (1 + betadns)
-                    min_EI = 0.3 * self.Ec * self.Ig(axis) / (1 + betadns)
-                    EI = max(EI_jenkins, min_EI)
-                else:
-                    EI_jenkins = (1.05 - 0.6 * abs(P) / self.p0) * (1 + 3 * (self.Asr / self.Ag - 0.01)) * (
-                            1.2 - 2 * ecc_ratio) * self.Ec * self.Ig(axis) / (1 + betadns)
-                    min_EI = 0.3 * self.Ec * self.Ig(axis) / (1 + betadns)
-                    EI = max(EI_jenkins, min_EI)
-                return EI
-
-            else:
-                raise ValueError("P and M types or sizes are not as expected")
-
-        elif EI_type.lower() == "jf-b":
-            # Jenkins and Frosch, 2011 - Eq.10.2
-            EI = []
-            if P is None or M is None:
-                raise ValueError("P and M must be defined for EI_type = 'JF-b'")
-
-            elif isinstance(P, (list, np.ndarray)) and isinstance(M, (list, np.ndarray)):
-                if len(P) != len(M):
-                    raise ValueError("P and M must be of the same size")
-                for P, M in zip(P, M):
-                    ecc_ratio = M / P / self.depth(axis)
-                    if ecc_ratio <= 0.1:
-                        EI_jenkins = (1.0 - 0.5 * P / self.p0) * self.Ec * self.Ig(axis) / (1 + betadns)
-                        min_EI = 0.4 * self.Ec * self.Ig(axis) / (1 + betadns)
-                        EI.append(max(EI_jenkins, min_EI))
-                    else:
-                        EI_jenkins = (1.0 - 0.5 * P / self.p0) * self.Ec * self.Ig(axis) * (
-                            1.2 - 2 * ecc_ratio) / (1 + betadns)
-                        min_EI = 0.4 * self.Ec * self.Ig(axis) / (1 + betadns)
-                        EI.append(max(EI_jenkins, min_EI))
-                return EI
-
-            elif isinstance(P, (float, np.float64, int)) and isinstance(M, (float, np.float64, int)):
-                try:
-                    ecc_ratio = abs(M) / abs(P) / self.depth(axis)
-                except ZeroDivisionError:
-                    return np.nan
-                if ecc_ratio <= 0.1:
-                    EI_jenkins = (1.0 - 0.5 * P / self.p0) * self.Ec * self.Ig(axis) / (1 + betadns)
-                    min_EI = 0.4 * self.Ec * self.Ig(axis) / (1 + betadns)
-                    EI = max(EI_jenkins, min_EI)
-                else:
-                    EI_jenkins = (1.0 - 0.5 * P / self.p0) * self.Ec * self.Ig(axis) * (
-                            1.2 - 2 * ecc_ratio) / (1 + betadns)
-                    min_EI = 0.4 * self.Ec * self.Ig(axis) / (1 + betadns)
-                    EI = max(EI_jenkins, min_EI)
-                return EI
-
-            else:
-                raise ValueError("P and M types or sizes are not as expected")
-
-        elif EI_type.lower() == "gross":
+        if key == 'gross':
             return self.EIgross(axis)
 
-        if EI_type == "proposed_1_1":
-            Mn = self.Mn(axis)
-            if M / Mn <= 0.95:
-                return 0.4 * self.Ec * self.Ig(axis) / (1 + betadns)
-            else:
-                return 1 * self.Es * self.Isr(axis) / (1 + betadns)
+        # --- load dependent methods ---------------------------------------
+        if key == 'aci-c':
+            # ACI 318-19, Section 6.6.4.4.4c
+            P_arr, M_arr, scalar_input = self._as_load_arrays(EI_type, P, M)
+            max_I = 0.875 * Ig
+            min_I = 0.35 * Ig
+            # As P -> 0 the clip returns min_I, the pure-bending limit.
+            with np.errstate(divide='ignore', invalid='ignore'):
+                I_ACI = (0.8 + 25 * self.Asr / self.Ag) * (
+                        1 - M_arr / P_arr / self.depth(axis)
+                        - 0.5 * P_arr / self.p0) * Ig
+            Ieff = np.clip(I_ACI, min_I, max_I)
+            return self._match_load_shape(Ieff * Ec, scalar_input)
 
-        if EI_type == "proposed_1_2":
-            Mn = self.Mn(axis)
-            if M / Mn <= 0.95:
-                return (0.2 * self.Ec * self.Ig(axis) + self.Es * self.Isr(axis)) / (1 + betadns)
-            else:
-                return 1 * self.Es * self.Isr(axis) / (1 + betadns)
+        if key == 'jf-a':
+            # Jenkins and Frosch, 2011 - Eq.10.1
+            P_arr, M_arr, scalar_input = self._as_load_arrays(EI_type, P, M)
+            ecc_ratio = self._eccentricity_ratio(P_arr, M_arr, self.depth(axis))
+            shape_factor = np.where(ecc_ratio <= 0.1, 1.0, 1.2 - 2 * ecc_ratio)
+            EI_jenkins = ((1.05 - 0.6 * np.abs(P_arr) / self.p0)
+                          * (1 + 3 * (self.Asr / self.Ag - 0.01))
+                          * shape_factor * Ec * Ig / creep_factor)
+            min_EI = 0.3 * Ec * Ig / creep_factor
+            return self._match_load_shape(np.maximum(EI_jenkins, min_EI), scalar_input)
 
-        elif EI_type == "proposed_2":
-            EI_gross = self.Ec * self.Ig(axis)
-            P_P0 = P / self.p0
+        if key == 'jf-b':
+            # Jenkins and Frosch, 2011 - Eq.10.2
+            # Eccentricity ratio uses magnitudes, as in JF-a.
+            P_arr, M_arr, scalar_input = self._as_load_arrays(EI_type, P, M)
+            ecc_ratio = self._eccentricity_ratio(P_arr, M_arr, self.depth(axis))
+            shape_factor = np.where(ecc_ratio <= 0.1, 1.0, 1.2 - 2 * ecc_ratio)
+            EI_jenkins = ((1.0 - 0.5 * P_arr / self.p0)
+                          * Ec * Ig * shape_factor / creep_factor)
+            min_EI = 0.4 * Ec * Ig / creep_factor
+            return self._match_load_shape(np.maximum(EI_jenkins, min_EI), scalar_input)
+
+        if key in ('proposed_1_1', 'proposed_1_2'):
+            _, M_arr, scalar_input = self._as_load_arrays(EI_type, 0.0, M)
+            Mn = self.Mn(axis)
+            if key == 'proposed_1_1':
+                low = 0.4 * Ec * Ig / creep_factor
+            else:
+                low = (0.2 * Ec * Ig + self.Es * self.Isr(axis)) / creep_factor
+            high = 1 * self.Es * self.Isr(axis) / creep_factor
+            EI_values = np.where(M_arr / Mn <= 0.95, low, high)
+            return self._match_load_shape(EI_values, scalar_input)
+
+        if key == 'proposed_2':
+            if col is None:
+                raise ValueError("col must be defined for EI_type = 'proposed_2'")
+            P_arr, _, scalar_input = self._as_load_arrays(EI_type, P, M, require_M=False)
+            EI_gross = Ec * Ig
             P0 = self.p0
-            As_Ag = self.Asr / self.Ag
-            r = np.sqrt(self.Ig(axis) / self.Ag)
+            r = np.sqrt(Ig / self.Ag)
             L = col.length
 
             if type(col).__name__ == 'NonSwayColumn2d':
                 K = 1
-                EI = (0.45 * P / P0 + 0.35 * ((K * L / r) / 100) ** 1.85 * np.sin(
-                    np.pi * P / P0)) * EI_gross + 0.3* self.Es * self.Isr(axis) / (1 + betadns)
-                return EI
-
             elif type(col).__name__ == 'SwayColumn2d':
                 K = col.effective_length_factor(0.4 * EI_gross)
-                EI = (0.45 * P / P0 + 0.35 * ((K * L / r) / 100) ** 1.85 * np.sin(
-                    np.pi * P / P0)) * EI_gross + 0.3* self.Es * self.Isr(axis) / (1 + betadns)
-                return EI
-
-        
-        else:
-            # Fall back to resolving EI_type as '<module>,<argument>'. Only the
-            # resolution is guarded: a bare except also swallowed errors raised
-            # inside the resolved function and reported them as an unknown
-            # EI_type, hiding the real failure.
-            import importlib
-
-            try:
-                module_name, EI_input = EI_type.split(',')
-            except (AttributeError, ValueError) as exc:
+            else:
                 raise ValueError(
-                    f'Unknown EI_type {EI_type!r}. Expected one of the built-in method '
-                    f"names, or '<module>,<argument>' naming a module that defines a "
-                    f'function of the same name.') from exc
+                    f"EI_type 'proposed_2' does not support column type "
+                    f'{type(col).__name__}')
 
-            try:
-                module = importlib.import_module(module_name)
-                EI_trial = getattr(module, module_name)
-            except (ImportError, AttributeError) as exc:
-                raise ValueError(
-                    f'Unknown EI_type {EI_type!r}: could not resolve a function named '
-                    f'{module_name!r} in a module of that name.') from exc
+            EI_values = ((0.45 * P_arr / P0
+                          + 0.35 * ((K * L / r) / 100) ** 1.85
+                          * np.sin(np.pi * P_arr / P0)) * EI_gross
+                         + 0.3 * self.Es * self.Isr(axis) / creep_factor)
+            return self._match_load_shape(EI_values, scalar_input)
 
-            # The module must define a function with the same name as the
-            # module itself, callable as func(section, axis, arg, betadns,
-            # P, M, col).
-            return EI_trial(self, axis, EI_input, betadns, P, M, col)
+        # --- '<module>,<argument>' fallback --------------------------------
+        # Only the resolution is guarded, so errors raised inside the
+        # resolved function are not reported as an unknown EI_type.
+        import importlib
+
+        try:
+            module_name, EI_input = EI_type.split(',')
+        except ValueError as exc:
+            raise ValueError(
+                f'Unknown EI_type {EI_type!r}. Expected one of '
+                f"{', '.join(self._BUILTIN_EI_TYPES)}, or "
+                f"'<module>,<argument>' naming a module that defines a function "
+                f'of the same name.') from exc
+
+        try:
+            module = importlib.import_module(module_name)
+            EI_trial = getattr(module, module_name)
+        except (ImportError, AttributeError) as exc:
+            raise ValueError(
+                f'Unknown EI_type {EI_type!r}: could not resolve a function named '
+                f'{module_name!r} in a module of that name.') from exc
+
+        # The module must define a function of the same name, called as
+        # func(section, axis, arg, betadns, P, M, col).
+        return EI_trial(self, axis, EI_input, betadns, P, M, col)
 
     def interaction_diagram_object(self, axis, num_points=20, factored=False, only_compressive=True):
         # Cache on every input that changes the diagram. A single cached object
