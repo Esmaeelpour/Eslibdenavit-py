@@ -1108,17 +1108,24 @@ class RC:
                     ops.patch('rect', concrete_material_id, nfy, nfx, -H / 2, -B / 2, H / 2, B / 2)
 
             elif axis in ['x', 'y']:
+                # H is the section depth in the direction of bending, B the
+                # width perpendicular to it, and nfd the fiber count through
+                # the depth (nfx is ignored for x bending, nfy for y bending).
+                # reinf_depth is the reinforcement extent measured through the
+                # same depth direction: By for x bending, Bx for y bending.
+                if axis == 'x':
+                    H = self.conc_cross_section.H
+                    B = self.conc_cross_section.B
+                    nfd = nfy
+                    reinf_depth = self.reinforcement[0].By
+                else:
+                    H = self.conc_cross_section.B
+                    B = self.conc_cross_section.H
+                    nfd = nfx
+                    reinf_depth = self.reinforcement[0].Bx
+
                 for i in self.reinforcement:
-                    if axis == 'x':
-                        rebar_coords = i.coordinates[1]
-                        H = self.conc_cross_section.H
-                        B = self.conc_cross_section.B
-                        nfd = nfy
-                    else:
-                        rebar_coords = i.coordinates[0]
-                        H = self.conc_cross_section.B
-                        B = self.conc_cross_section.H
-                        nfd = nfx
+                    rebar_coords = i.coordinates[1] if axis == 'x' else i.coordinates[0]
 
                     for index, value in enumerate(rebar_coords):
                         ops.fiber(float(value), 0, i.Ab, steel_material_id)
@@ -1128,7 +1135,7 @@ class RC:
                             negative_area_material_id = concrete_material_id
                         ops.fiber(float(value), 0, -i.Ab, negative_area_material_id)
 
-                cdb = (H - self.reinforcement[0].By) / 2 - self.reinforcement[0].db / 2
+                cdb = (H - reinf_depth) / 2 - self.reinforcement[0].db / 2
                 if self.dbt is not None:
                     cdb = cdb - self.dbt / 2
                 if confinement:
@@ -1147,6 +1154,9 @@ class RC:
                 else:
                     fiber_height = H / nfd
                     ops.layer('straight', concrete_material_id, nfd, fiber_height * B, -H / 2, 0, H / 2, 0)
+
+            else:
+                raise ValueError(f'Unknown option for axis: {axis}')
 
         elif type(self.conc_cross_section).__name__ == 'Circle':
             if (axis is None) or (axis == '3d'):
@@ -1194,7 +1204,7 @@ class RC:
                     else:
                         rebar_coords = i.coordinates[0]
 
-                    for index, value in enumerate(i.coordinates[1]):
+                    for index, value in enumerate(rebar_coords):
                         ops.fiber(value, 0, i.Ab, steel_material_id)
                         if confinement:
                             negative_area_material_id = core_concrete_material_id
@@ -1203,7 +1213,8 @@ class RC:
                         ops.fiber(value, 0, -i.Ab, negative_area_material_id)
 
                 d = self.conc_cross_section.diameter
-                max_fiber_size = d / nfy
+                # nfx is ignored for x bending, nfy for y bending
+                max_fiber_size = d / (nfy if axis == 'x' else nfx)
                 if confinement:
                     ds = 2*self.reinforcement[0].rc + self.reinforcement[0].db + self.dbt
                     nf = ceil(0.5*ds/max_fiber_size)
@@ -1221,8 +1232,6 @@ class RC:
                 raise ValueError(f'3D option not supported for obround cross-sections yet')
 
             elif axis == 'x' or axis == 'y':
-                ds = self.reinforcement[0].D + self.reinforcement[0].db + self.dbt
-
                 if confinement:
                     negative_area_material_id = core_concrete_material_id
                 else:
@@ -1238,12 +1247,11 @@ class RC:
                             ops.fiber(value, 0, i.Ab, steel_material_id)
                             ops.fiber(value, 0, -i.Ab, negative_area_material_id)
 
-                if axis == 'x':
-                    nf = nfx
-                elif axis == 'y':
-                    nf = nfy
+                # nfx is ignored for x bending, nfy for y bending
+                nf = nfy if axis == 'x' else nfx
 
                 if confinement:
+                    ds = self.reinforcement[0].D + self.reinforcement[0].db + self.dbt
                     obround_patch_2d_confined(cover_concrete_material_id, core_concrete_material_id, nf,
                                               self.conc_cross_section.D, self.conc_cross_section.a, ds,
                                               axis=axis)
