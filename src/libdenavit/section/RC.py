@@ -920,6 +920,10 @@ class RC:
             Optional argument to include creep parameters in concrete definition
         """
 
+        for _name, _value in (('nfy', nfy), ('nfx', nfx)):
+            if not isinstance(_value, (int, np.integer)) or isinstance(_value, bool) or _value < 1:
+                raise ValueError(f'{_name} must be a positive integer (got {_value!r})')
+
         # region Define Material IDs
         steel_material_id = start_material_id
         concrete_material_id = start_material_id + 1  # Used if no confinement
@@ -1138,22 +1142,22 @@ class RC:
                 cdb = (H - reinf_depth) / 2 - self.reinforcement[0].db / 2
                 if self.dbt is not None:
                     cdb = cdb - self.dbt / 2
+                def strip_layer(material_id, n_fibers, y_start, y_end):
+                    n_fibers = max(1, int(n_fibers))
+                    strip_height = (y_end - y_start) / n_fibers
+                    half = strip_height / 2
+                    ops.layer('straight', material_id, n_fibers, strip_height * B,
+                              y_start + half, 0, y_end - half, 0)
+
                 if confinement:
-                    nfd_cover = ceil(cdb * nfd / H)
-                    nfd_core = ceil((H - 2 * cdb) * nfd / H)
+                    nfd_cover = max(1, ceil(cdb * nfd / H))
+                    nfd_core = max(1, ceil((H - 2 * cdb) * nfd / H))
 
-                    core_fiber_height = (H - 2 * cdb) / nfd_core
-                    cover_fiber_height = cdb / nfd_cover
-
-                    ops.layer('straight', core_concrete_material_id, nfd_core, core_fiber_height * B,
-                              -H / 2 + cdb, 0, H / 2 - cdb, 0)
-                    ops.layer('straight', cover_concrete_material_id, nfd_cover, cover_fiber_height * B,
-                              -H / 2, 0, -H / 2 + cdb, 0)
-                    ops.layer('straight', cover_concrete_material_id, nfd_cover, cover_fiber_height * B,
-                              H / 2 - cdb, 0, H / 2, 0)
+                    strip_layer(core_concrete_material_id, nfd_core, -H / 2 + cdb, H / 2 - cdb)
+                    strip_layer(cover_concrete_material_id, nfd_cover, -H / 2, -H / 2 + cdb)
+                    strip_layer(cover_concrete_material_id, nfd_cover, H / 2 - cdb, H / 2)
                 else:
-                    fiber_height = H / nfd
-                    ops.layer('straight', concrete_material_id, nfd, fiber_height * B, -H / 2, 0, H / 2, 0)
+                    strip_layer(concrete_material_id, nfd, -H / 2, H / 2)
 
             else:
                 raise ValueError(f'Unknown option for axis: {axis}')
