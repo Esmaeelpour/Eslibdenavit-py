@@ -80,6 +80,9 @@ class NonSwayColumn2d(Column2d):
         First-order moment for the ACI 6.2.5.3 1.4 check (M2/M1 <= 1.4).
 
         Pass apply_minimum=False to use the raw applied moment instead.
+
+        Independent of apply_minimum_eccentricity, which changes the loading
+        itself; this only changes what M1 is measured against.
         """
         applied = max(abs(M_top), abs(M_bot))
         if not apply_minimum:
@@ -88,20 +91,23 @@ class NonSwayColumn2d(Column2d):
 
 
     def _apply_aci_minimum_eccentricity(self, et, eb):
-        """Raise the dominant end eccentricity to the ACI 318-19 minimum."""
-        e_min = self._aci_minimum_eccentricity
-        self.e_min = e_min
+        """
+        Raise the dominant end eccentricity to the ACI 318-19 minimum.
 
-        # Find maximum eccentricity magnitude
+        Applied once at construction when apply_minimum_eccentricity is set, so
+        it changes the loading seen by every analysis. Independent of the
+        apply_minimum_moment option of the ACI elastic analyses, which is a
+        checking and reporting basis only. See _aci_first_order_moment.
+        """
+        e_min = self._aci_minimum_eccentricity
         e_max = max(abs(et), abs(eb))
-        
-        # Apply minimum if needed
+
         if e_max < e_min:
             if abs(et) >= abs(eb):
                 et = e_min if et >= 0 else -e_min
             else:
                 eb = e_min if eb >= 0 else -e_min
-        
+
         return et, eb
 
 
