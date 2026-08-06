@@ -1513,14 +1513,7 @@ class NonSwayColumn2d(Column2d):
                 
                 # Check if P exceeds material capacity
                 P_check = results.applied_axial_load[-1]
-                
-                if max_1_4_Mu_limit is True:
-                    if max(abs(results.applied_moment_top[-1] * 1.4),
-                        abs(results.applied_moment_bot[-1] * 1.4)) <= results.maximum_abs_moment[-1]:
-                        if e!= 0 or (abs(self.et) > 1e-12 and abs(self.eb) > 1e-12):
-                            results.exit_message = 'max_1_4_Mu_limit_reached'
-                            break
-                
+
                 if P_check > P_max_material:
                     results.exit_message = 'Material Strength Limit Reached'
                     break
@@ -1578,6 +1571,15 @@ class NonSwayColumn2d(Column2d):
                 
                 record_stage2()
                 
+                # The 1.4Mu limit marks where the second-order moment grows to
+                # 1.4x the applied first-order moment. At the start of the
+                # lateral stage the applied moment is still zero while the
+                # second-order moment already carries P*delta from the axial
+                # stage, so the ratio starts above 1.4 and the test would trip
+                # on the first step. Only arm it once the ratio has come down
+                # below 1.4, and report the crossing on the way back up.
+                max_1_4_Mu_armed = False
+
                 # MODIFIED: Run lateral loading with more permissive limits
                 max_moment = 0.0
                 max_steps = 10000000  # Prevent infinite loops
@@ -1644,11 +1646,14 @@ class NonSwayColumn2d(Column2d):
                             break
                     
                     if max_1_4_Mu_limit:
-                        # Check for 1/4 Mu limit
+                        # Check for 1.4 Mu limit
                         if self.et == 0 and self.eb == 0:
                             continue  # Skip for axial-only columns
-                        if max(abs(results.applied_moment_top[-1] * 1.4),
-                               abs(results.applied_moment_bot[-1] * 1.4)) <= M_check:
+                        applied_1_4_Mu = max(abs(results.applied_moment_top[-1] * 1.4),
+                                             abs(results.applied_moment_bot[-1] * 1.4))
+                        if applied_1_4_Mu > M_check:
+                            max_1_4_Mu_armed = True
+                        elif max_1_4_Mu_armed:
                             results.exit_message = 'max_1_4_Mu_limit_reached'
                             break
                     
