@@ -56,8 +56,6 @@ class RC:
         self._Ec = x
 
     def get_shrinkage_props_for_uniaxial_material(self, print_factors=False, **kwargs):
-        if kwargs is None:
-            kwargs = {}
         # Define default values for 'si' and 'us' units
         default_values = {'si':
                               {'eps_sh_u0': 780e-6,  # ultimate shrinkage strain
@@ -96,7 +94,7 @@ class RC:
 
         try:
             VoverS = kwargs['VoverS']
-        except:
+        except KeyError:
             VoverS = self.conc_cross_section.A / self.conc_cross_section.perimeter
 
         slump = kwargs['slump']
@@ -177,8 +175,6 @@ class RC:
         return {'eps_sh_u': eps_sh_u, 'f': f, 'psish': f}
 
     def get_creep_props_for_uniaxial_material(self, print_factors=False, **kwargs):
-        if kwargs is None:
-            kwargs = {}
         # Define default values for 'si' and 'us' units
         default_values = {'si':
                               {'phi_u_0': 2.35,  # ultimate creep coefficient
@@ -212,7 +208,7 @@ class RC:
         RH = kwargs['RH']
         try:
             VoverS = kwargs['VoverS']
-        except:
+        except KeyError:
             VoverS = self.conc_cross_section.A / self.conc_cross_section.perimeter
         slump = kwargs['slump']
         fine_agg_ratio = kwargs['fine_agg_ratio']
@@ -1004,8 +1000,8 @@ class RC:
 
         # region Define Creep Material
         if creep:
-            creepdata = self.get_creep_props_for_uniaxial_material(**creep_props_dict)
-            shrinkagedata = self.get_shrinkage_props_for_uniaxial_material(**shrinkage_props_dict)
+            creepdata = self.get_creep_props_for_uniaxial_material(**(creep_props_dict or {}))
+            shrinkagedata = self.get_shrinkage_props_for_uniaxial_material(**(shrinkage_props_dict or {}))
 
             if self._default_age_warn:
                 if self.tD == 5:
