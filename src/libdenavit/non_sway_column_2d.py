@@ -1870,7 +1870,9 @@ class NonSwayColumn2d(Column2d):
 
                 # Record whatever we got at the limit point
                 P.append(iP)
-                M1.append(results.applied_moment_top_at_limit_point)
+                M1.append(self._aci_first_order_moment(
+                    results.applied_moment_top_at_limit_point,
+                    results.applied_moment_bot_at_limit_point, iP))
                 M2.append(results.maximum_abs_moment_at_limit_point)
                 exit_message.append(results.exit_message)
 
