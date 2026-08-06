@@ -60,29 +60,26 @@ class NonSwayColumn2d(Column2d):
         self.t_sus = kwargs.get('t_sus', 10000)
 
 
-    def _apply_aci_minimum_eccentricity(self, et, eb):
+    @property
+    def _aci_minimum_eccentricity(self):
         """
-        Apply ACI 318-19 Section 6.6.4.5.4 minimum eccentricity
+        ACI 318-19 Section 6.6.4.5.4 minimum eccentricity.
 
         e_min = 0.6 + 0.03*h  (in.)   /   15 + 0.03*h  (mm)
+
+        h is the section dimension in the direction of bending.
         """
-        # Get section dimension in direction of bending
-        if self.axis == 'x':
-            h = self.section.conc_cross_section.H
-        elif self.axis == 'y':
-            h = self.section.conc_cross_section.B
-        else:
-            # Default to H if axis not specified
-            h = self.section.conc_cross_section.H
-        
-        # Calculate minimum eccentricity (ACI 318-19 Section 6.6.4.5.4)
+        h = self.section.depth(self.axis)
         if self.section.units == 'us':
-            e_min = 0.6 + 0.03 * h  # in.
-        else:  # SI units
-            e_min = 15 + 0.03 * h  # mm
-        
+            return 0.6 + 0.03 * h  # in.
+        return 15 + 0.03 * h  # mm
+
+
+    def _apply_aci_minimum_eccentricity(self, et, eb):
+        """Raise the dominant end eccentricity to the ACI 318-19 minimum."""
+        e_min = self._aci_minimum_eccentricity
         self.e_min = e_min
-        
+
         # Find maximum eccentricity magnitude
         e_max = max(abs(et), abs(eb))
         
