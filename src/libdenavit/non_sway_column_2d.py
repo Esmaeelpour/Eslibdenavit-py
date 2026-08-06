@@ -422,7 +422,7 @@ class NonSwayColumn2d(Column2d):
                 continue
 
             delta = M2 / M1
-            if self.Cm / delta == 1:
+            if np.isclose(self.Cm / delta, 1.0):
                 # e.g. the pure-bending point (P=0, M1==M2==delta==1) combined with Cm==1
                 # (uniform moment / single curvature): the moment-magnification denominator
                 # (1 - Cm/delta) is exactly zero, so Pc is undefined here.
@@ -478,7 +478,7 @@ class NonSwayColumn2d(Column2d):
                 continue
 
             delta = M2 / M1
-            if self.Cm / delta == 1:
+            if np.isclose(self.Cm / delta, 1.0):
                 # e.g. the pure-bending point (P=0, M1==M2==delta==1) combined with Cm==1
                 # (uniform moment / single curvature): the moment-magnification denominator
                 # (1 - Cm/delta) is exactly zero, so Pc is undefined here.
