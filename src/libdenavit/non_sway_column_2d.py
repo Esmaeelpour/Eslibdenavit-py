@@ -1554,7 +1554,7 @@ class NonSwayColumn2d(Column2d):
                 
                 ops.test('NormUnbalance', 1e-6, 100)  # tolerance, max iterations
                 ops.algorithm('Newton')
-                ops.integrator('LoadControl', 1)
+                ops.integrator('DisplacementControl', control_node, 1, dU)
                 ops.analysis('Static')
                 
                 # Recorder for stage 2
