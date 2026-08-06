@@ -323,7 +323,9 @@ class NonSwayColumn2d(Column2d):
                     Pc = pi ** 2 * EIeff / (k * self.length) ** 2
                     error.append(buckling_load - Pc_factor * Pc)
 
-                M2 = M2_trials[error.index(min(error))]
+                # The trial closest to satisfying P == Pc_factor * Pc, i.e. the
+                # smallest residual magnitude -- not the most negative residual.
+                M2 = M2_trials[int(np.argmin(np.abs(error)))]
 
                 P_list.append(buckling_load)
                 M1_list.append(0)
