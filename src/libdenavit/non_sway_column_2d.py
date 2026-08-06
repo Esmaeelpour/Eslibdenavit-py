@@ -344,7 +344,7 @@ class NonSwayColumn2d(Column2d):
                 iM2_section = id2d.find_x_given_y(iP, 'pos')
                 k = 1  # Effective length factor (always one for this non-sway column)
 
-                iM1_list = [0]
+                trials = []
                 iM2_list = np.arange(0, iM2_section, iM2_section/1000)
                 for iM2 in iM2_list:
                     EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM2, col=self)
@@ -354,10 +354,13 @@ class NonSwayColumn2d(Column2d):
 
                     delta = max(self.Cm / (1 - (iP) / (Pc_factor * Pc)), 1.0)
 
-                    iM1_list.append(iM2 / delta)
+                    if np.isfinite(iM2 / delta):
+                        trials.append((iM2 / delta, iM2))
 
-                iM1 = max(iM1_list)
-                iM2 = iM2_list[iM1_list.index(iM1)-1]
+                if trials:
+                    iM1, iM2 = max(trials, key=lambda trial: trial[0])
+                else:
+                    iM1, iM2 = 0.0, 0.0
             P_list.append(iP)
             M1_list.append(iM1)
             M2_list.append(iM2)
