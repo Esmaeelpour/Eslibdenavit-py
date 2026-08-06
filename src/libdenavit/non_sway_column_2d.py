@@ -637,6 +637,11 @@ class NonSwayColumn2d(Column2d):
                 raise ValueError(f'The value of axis ({self.axis}) is not supported.')
 
         def update_dU(disp_incr_factor, div_factor=1):
+            if config['e'] == 0.0:
+                # axial-only: shrink the load step, stay in LoadControl
+                dF = (1.0 / max(1, config['num_steps_vertical'])) / div_factor
+                ops.integrator('LoadControl', dF)
+                return
             sgn_et = int(np.sign(self.et))
             sgn_eb = int(np.sign(self.eb))
             if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
@@ -656,7 +661,7 @@ class NonSwayColumn2d(Column2d):
             ops.test('NormUnbalance', 1e-3, 10)
 
         record()
-        
+
 
         maximum_applied_axial_load = 0.
         disp_incr_factor = config['disp_incr_factor']
