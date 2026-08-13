@@ -100,6 +100,11 @@ class NonSwayColumn2d(Column2d):
         return 0.1 * self.length
 
 
+    def _ecc_sign(self):
+        dominant_e = self.et if abs(self.et) >= abs(self.eb) else self.eb
+        return int(np.sign(dominant_e))
+
+
     def _initialize_results(self):
         """Initialize analysis results object with required attributes."""
         # Get base attributes and add NonSway-specific ones
@@ -161,7 +166,7 @@ class NonSwayColumn2d(Column2d):
 
 
         exit_message = [results.exit_message]
-        if P is np.nan or P == [np.nan]:
+        if not np.isfinite(P[0]):
             raise ValueError('Analysis failed at axial only loading')
 
         # Loop axial linearly spaced axial loads witn non-proportional analyses
@@ -574,12 +579,8 @@ class NonSwayColumn2d(Column2d):
         
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        
-        if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
-            ecc_sign = sgn_et if abs(self.et) >= abs(self.eb) else sgn_eb
-        else:
-            ecc_sign = sgn_et
-        
+        ecc_sign = self._ecc_sign()
+
         ops.constraints('Plain')
         ops.numberer('RCM')
         ops.system('UmfPack')
@@ -636,6 +637,11 @@ class NonSwayColumn2d(Column2d):
                 raise ValueError(f'The value of axis ({self.axis}) is not supported.')
 
         def update_dU(disp_incr_factor, div_factor=1):
+            if config['e'] == 0.0:
+                # axial-only: shrink the load step, stay in LoadControl
+                dF = (1.0 / max(1, config['num_steps_vertical'])) / div_factor
+                ops.integrator('LoadControl', dF)
+                return
             sgn_et = int(np.sign(self.et))
             sgn_eb = int(np.sign(self.eb))
             if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
@@ -655,7 +661,7 @@ class NonSwayColumn2d(Column2d):
             ops.test('NormUnbalance', 1e-3, 10)
 
         record()
-        
+
 
         maximum_applied_axial_load = 0.
         disp_incr_factor = config['disp_incr_factor']
@@ -722,13 +728,7 @@ class NonSwayColumn2d(Column2d):
         # region Determine the sign of the eccentricity
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        if sgn_et != sgn_eb:
-            if max(self.et, self.eb, key=abs) == self.et:
-                ecc_sign = sgn_et
-            else:
-                ecc_sign = sgn_eb
-        else:
-            ecc_sign = sgn_et
+        ecc_sign = self._ecc_sign()
         # endregion
 
         # region Define recorder
@@ -841,9 +841,6 @@ class NonSwayColumn2d(Column2d):
             results.time_in_longterm_analysis.append(ops.getTime())
             results.deformation_in_longterm_analysis.append(ops_get_maximum_abs_disp(self))
             
-            time_in_longterm_analysis.append(results.time_in_longterm_analysis)
-            deformation_in_longterm_analysis.append(results.maximum_abs_disp)
-            
             
             # Check for limits
             exit_message = check_analysis_limits(
@@ -930,16 +927,13 @@ class NonSwayColumn2d(Column2d):
         elif sgn_et != sgn_eb:
             if max(self.et, self.eb, key=abs) == self.et:
                 dof = 3 * self.ops_n_elem // 4
-                ecc_sign = sgn_et
             else:
                 dof = 1 * self.ops_n_elem // 4
-                ecc_sign = sgn_eb
             dU = self.length * config['disp_incr_factor'] / 20
             ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
             ops.integrator('DisplacementControl', dof, 1, dU)
         else:
-            ecc_sign = sgn_et
             dU = self.length * config['disp_incr_factor'] / 10
             ops.load(self.ops_n_elem, 0, -1, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
@@ -1094,10 +1088,10 @@ class NonSwayColumn2d(Column2d):
                 )
             if exit_message:
                 results.exit_message = exit_message
-                break
-            
+                return results
+
         # endregion
-        
+
         # region Run lateral load (time = LFH)
         ops.loadConst('-time', 0.0)
         ops.timeSeries('Linear', 101)
@@ -1105,22 +1099,18 @@ class NonSwayColumn2d(Column2d):
         
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        
-        
-        
+        ecc_sign = self._ecc_sign()
+
         if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
             if max(self.et, self.eb, key=abs) == self.et:
                 dof = 3 * self.ops_n_elem // 4
-                ecc_sign = sgn_et
             else:
                 dof = 1 * self.ops_n_elem // 4
-                ecc_sign = sgn_eb
             dU = self.length * config['disp_incr_factor'] / 2
             ops.load(self.ops_n_elem, 0, 0, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
             ops.integrator('DisplacementControl', dof, 1, dU)
         else:
-            ecc_sign = sgn_et
             dU = self.length * config['disp_incr_factor']
             ops.load(self.ops_n_elem, 0, 0, self.et * config['e'] * ecc_sign)
             ops.load(0, 0, 0, -self.eb * config['e'] * ecc_sign)
@@ -1134,8 +1124,8 @@ class NonSwayColumn2d(Column2d):
             section_strains = ops_get_section_strains(self)
 
             results.applied_axial_load.append(config['P'])
-            results.applied_moment_top.append(self.et * time * ecc_sign)
-            results.applied_moment_bot.append(-self.eb * time * ecc_sign)
+            results.applied_moment_top.append(self.et * config['e'] * time * ecc_sign)
+            results.applied_moment_bot.append(-self.eb * config['e'] * time * ecc_sign)
             results.maximum_abs_moment.append(ops_get_maximum_abs_moment(self))
             results.maximum_abs_disp.append(ops_get_maximum_abs_disp(self))
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
@@ -1314,11 +1304,7 @@ class NonSwayColumn2d(Column2d):
         #region Determine eccentricity sign
         sgn_et = int(np.sign(self.et))
         sgn_eb = int(np.sign(self.eb))
-        
-        if sgn_et != sgn_eb and (sgn_eb != 0 and sgn_et != 0):
-            ecc_sign = sgn_et if abs(self.et) >= abs(self.eb) else sgn_eb
-        else:
-            ecc_sign = sgn_et
+        ecc_sign = self._ecc_sign()
         #endregion
 
         
@@ -1535,8 +1521,7 @@ class NonSwayColumn2d(Column2d):
                     break
                 
             
-            # If Stage 1 failed, skip Stage 2
-            if not 'Material Strength Limit' in results.exit_message:
+            if results.exit_message == "":
                 # Stage 2: Apply lateral load while maintaining axial
                 ops.loadConst('-time', 0.0)
                 ops.timeSeries('Linear', 101)
@@ -1569,7 +1554,7 @@ class NonSwayColumn2d(Column2d):
                 
                 ops.test('NormUnbalance', 1e-6, 100)  # tolerance, max iterations
                 ops.algorithm('Newton')
-                ops.integrator('LoadControl', 1)
+                ops.integrator('DisplacementControl', control_node, 1, dU)
                 ops.analysis('Static')
                 
                 # Recorder for stage 2
@@ -1659,7 +1644,7 @@ class NonSwayColumn2d(Column2d):
                             continue  # Skip for axial-only columns
                         if max(abs(results.applied_moment_top[-1] * 1.4),
                                abs(results.applied_moment_bot[-1] * 1.4)) <= M_check:
-                            results.exit_message = 'M_max_1_4_Mu Limit Reached'
+                            results.exit_message = 'max_1_4_Mu_limit_reached'
                             break
                     
                 if step_count >= max_steps:
@@ -1717,14 +1702,14 @@ class NonSwayColumn2d(Column2d):
                 ind, x = find_limit_point_in_list(results.applied_axial_load, P_check)
         elif 'Peak Load' in results.exit_message or 'Peak Moment' in results.exit_message:
             ind = len(results.applied_axial_load) - 2 # Go back to the peak
-            x = 1.0 
+            x = 0.0
         elif 'Eigenvalue' in results.exit_message:
             ind, x = find_limit_point_in_list(results.lowest_eigenvalue, eigenvalue_limit)
         elif 'Deformation' in results.exit_message:
             ind, x = find_limit_point_in_list(results.maximum_abs_disp, deformation_limit)
         elif 'max_1_4_Mu_limit_reached' in results.exit_message:
             ind = len(results.applied_axial_load) - 2 # Go back to the point before the last
-            x = 1.0
+            x = 0.0
         else:
             ind = len(results.applied_axial_load) - 1
             x = 0.0
