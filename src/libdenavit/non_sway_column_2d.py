@@ -655,10 +655,14 @@ class NonSwayColumn2d(Column2d):
 
         if config['e'] == 0.0:
             # axial-only: vertical load only, no moments
-            dF = self._reference_axial_load() / max(1, config['num_steps_vertical'])
             ops.load(self.ops_n_elem, 0, -1, 0)  # reference vertical load
             ops.load(0, 0, 0, 0.0)                 # no moment
-            ops.integrator('LoadControl', dF)
+            if config['axial_control'] == 'displacement':
+                ops.integrator('DisplacementControl', self.ops_n_elem, 2,
+                               -self.length * config['disp_incr_factor'])
+            else:
+                dF = self._reference_axial_load() / max(1, config['num_steps_vertical'])
+                ops.integrator('LoadControl', dF)
         else:
             ops.load(self.ops_n_elem, 0, -1, et * config['e'])
             ops.load(0, 0, 0, -eb * config['e'])
@@ -702,10 +706,18 @@ class NonSwayColumn2d(Column2d):
                 raise ValueError(f'The value of axis ({self.axis}) is not supported.')
 
         def update_dU(disp_incr_factor, div_factor=1):
+            base_incr_factor = config['disp_incr_factor']
+            step_scale = disp_incr_factor / base_incr_factor if base_incr_factor else 1.0
+
             if config['e'] == 0.0:
+                if config['axial_control'] == 'displacement':
+                    dU = -self.length * disp_incr_factor / div_factor
+                    ops.integrator('DisplacementControl', self.ops_n_elem, 2, dU)
+                    return
                 # axial-only: shrink the load step, stay in LoadControl
                 dF = (self._reference_axial_load()
-                      / max(1, config['num_steps_vertical']) / div_factor)
+                      / max(1, config['num_steps_vertical'])
+                      * step_scale / div_factor)
                 ops.integrator('LoadControl', dF)
                 return
             et, eb = self._oriented_ecc
@@ -948,9 +960,12 @@ class NonSwayColumn2d(Column2d):
 
 
         def update_dU(disp_incr_factor, div_factor=1):
+            base_incr_factor = config['disp_incr_factor']
+            step_scale = disp_incr_factor / base_incr_factor if base_incr_factor else 1.0
+
             if config['e'] == 0.0:
                 # axial-only: shrink load step, stay in LoadControl
-                dF = (1.0 / max(1, config['num_steps_vertical'])) / div_factor
+                dF = (1.0 / max(1, config['num_steps_vertical'])) * step_scale / div_factor
                 ops.integrator('LoadControl', dF)
             else:
                 # bending present: DisplacementControl as before

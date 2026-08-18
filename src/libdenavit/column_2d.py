@@ -68,6 +68,7 @@ class Column2d(ABC):
             'P': kwargs.get('P', 0),
             'num_steps_vertical': kwargs.get('num_steps_vertical', 1000),
             'disp_incr_factor': kwargs.get('disp_incr_factor', 1e-5),
+            'axial_control': kwargs.get('axial_control', 'load'),
             'eigenvalue_limit': kwargs.get('eigenvalue_limit', 0),
             'deformation_limit': kwargs.get('deformation_limit', 'default'),
             'concrete_strain_limit': kwargs.get('concrete_strain_limit', -0.01),
@@ -81,7 +82,11 @@ class Column2d(ABC):
         # Set default deformation limit using subclass override
         if config['deformation_limit'] == 'default':
             config['deformation_limit'] = self._get_default_deformation_limit()
-            
+
+        if config['axial_control'] not in ('load', 'displacement'):
+            raise ValueError(f"axial_control must be 'load' or 'displacement', "
+                             f"got {config['axial_control']!r}")
+
         return config
     
     def _initialize_results(self):
