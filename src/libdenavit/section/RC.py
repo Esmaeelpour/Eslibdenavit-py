@@ -653,7 +653,7 @@ class RC:
             return (0.2 * Ec * Ig + self.Es * self.Isr(axis)) / creep_factor
 
         if key == 'gross':
-            return self.EIgross(axis)
+            return self.EIgross(axis) / creep_factor
 
         # --- load dependent methods ---------------------------------------
         if key == 'aci-c':
@@ -667,7 +667,7 @@ class RC:
                         1 - M_arr / P_arr / self.depth(axis)
                         - 0.5 * P_arr / self.p0) * Ig
             Ieff = np.clip(I_ACI, min_I, max_I)
-            return self._match_load_shape(Ieff * Ec, scalar_input)
+            return self._match_load_shape(Ieff * Ec / creep_factor, scalar_input)
 
         if key == 'jf-a':
             # Jenkins and Frosch, 2011 - Eq.10.1
@@ -723,7 +723,7 @@ class RC:
             EI_values = ((0.45 * P_arr / P0
                           + 0.35 * ((K * L / r) / 100) ** 1.85
                           * np.sin(np.pi * P_arr / P0)) * EI_gross
-                         + 0.3 * self.Es * self.Isr(axis) / creep_factor)
+                         + 0.3 * self.Es * self.Isr(axis)) / creep_factor
             return self._match_load_shape(EI_values, scalar_input)
 
         # --- '<module>,<argument>' fallback --------------------------------
