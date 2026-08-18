@@ -664,8 +664,8 @@ class RC:
             # As P -> 0 the clip returns min_I, the pure-bending limit.
             with np.errstate(divide='ignore', invalid='ignore'):
                 I_ACI = (0.8 + 25 * self.Asr / self.Ag) * (
-                        1 - M_arr / P_arr / self.depth(axis)
-                        - 0.5 * P_arr / self.p0) * Ig
+                        1 - np.abs(M_arr) / np.abs(P_arr) / self.depth(axis)
+                        - 0.5 * np.abs(P_arr) / self.p0) * Ig
             Ieff = np.clip(I_ACI, min_I, max_I)
             return self._match_load_shape(Ieff * Ec / creep_factor, scalar_input)
 
