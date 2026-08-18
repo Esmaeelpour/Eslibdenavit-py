@@ -409,17 +409,20 @@ class NonSwayColumn2d(Column2d):
                 k = 1  # Effective length factor (always one for this non-sway column)
 
                 trials = []
-                iM2_list = np.arange(0, iM2_section, iM2_section/1000)
-                for iM2 in iM2_list:
-                    EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM2, col=self)
+                for iM1_trial in np.linspace(0.0, iM2_section, 1000):
+                    EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM1_trial, col=self)
                     Pc = pi ** 2 * EIeff / (k * self.length) ** 2
-                    if Pc_factor * Pc < iP:
+                    if Pc_factor * Pc <= iP:
+                        # Unstable at this first-order moment; a larger moment
+                        # only softens the section further, so stop here.
                         break
 
                     delta = max(self.Cm / (1 - (iP) / (Pc_factor * Pc)), 1.0)
+                    iM2_trial = delta * iM1_trial
 
-                    if np.isfinite(iM2 / delta):
-                        trials.append((iM2 / delta, iM2))
+                    # The magnified moment still has to fit inside the section.
+                    if iM2_trial <= iM2_section:
+                        trials.append((iM1_trial, iM2_trial))
 
                 if trials:
                     iM1, iM2 = max(trials, key=lambda trial: trial[0])
@@ -428,7 +431,7 @@ class NonSwayColumn2d(Column2d):
             P_list.append(iP)
             M1_list.append(iM1)
             M2_list.append(iM2)
-            EIeff_list.append(self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM2, col=self))
+            EIeff_list.append(self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM1, col=self))
         results = {'P':np.array(P_list),'M1':np.array(M1_list),'M2':np.array(M2_list), 'EIeff':np.array(EIeff_list)}
         return results
 
