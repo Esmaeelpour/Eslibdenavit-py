@@ -76,6 +76,13 @@ class SwayColumn2d(Column2d):
         return config
 
 
+    def _peak_response(self, results, analysis_type=None):
+        """A nonproportional sway analysis is driven by the horizontal load, not the axial."""
+        if analysis_type is not None and analysis_type.lower() == 'nonproportional_limit_point':
+            return results.applied_horizontal_load, max(results.applied_horizontal_load)
+        return results.applied_axial_load, max(results.applied_axial_load)
+
+
     @property
     def lever_arm(self):
         if self.k_bot == 0 and self.k_top > 0:
@@ -801,30 +808,5 @@ class SwayColumn2d(Column2d):
         return config
     
     
-    def _find_limit_point(self, results, config, analysis_type):
-        """Find and set limit point values with sway-specific logic."""
-        if 'Analysis Failed' in results.exit_message:
-            if analysis_type.lower() == 'proportional_limit_point':
-                ind, x = find_limit_point_in_list(results.applied_axial_load, max(results.applied_axial_load))
-            elif analysis_type.lower() == 'nonproportional_limit_point':
-                ind, x = find_limit_point_in_list(results.applied_horizontal_load, max(results.applied_horizontal_load))
-            warnings.warn('Analysis failed')
-        elif 'Eigenvalue Limit' in results.exit_message:
-            ind, x = find_limit_point_in_list(results.lowest_eigenvalue, config['eigenvalue_limit'])
-        elif 'Extreme Compressive Concrete Fiber Strain Limit Reached' in results.exit_message:
-            ind, x = find_limit_point_in_list(results.maximum_concrete_compression_strain, config['concrete_strain_limit'])
-        elif 'Extreme Steel Fiber Strain Limit Reached' in results.exit_message:
-            ind, x = find_limit_point_in_list(results.maximum_steel_strain, config['steel_strain_limit'])
-        elif 'Deformation Limit Reached' in results.exit_message:
-            ind, x = find_limit_point_in_list(results.maximum_abs_disp, config['deformation_limit'])
-        elif 'Load Drop Limit Reached' in results.exit_message:
-            if analysis_type.lower() == 'proportional_limit_point':
-                ind, x = find_limit_point_in_list(results.applied_axial_load, max(results.applied_axial_load))
-            elif analysis_type.lower() == 'nonproportional_limit_point':
-                ind, x = find_limit_point_in_list(results.applied_horizontal_load, max(results.applied_horizontal_load))
-        else:
-            raise Exception('Unknown limit point')
-
-        self._set_limit_point_values(results, ind, x)
         
     

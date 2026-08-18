@@ -1,6 +1,19 @@
 from libdenavit import opensees as ops
 
 
+EIGENVALUE_LIMIT = 'Eigenvalue Limit Reached'
+DEFORMATION_LIMIT = 'Deformation Limit Reached'
+CONCRETE_COMPRESSION_STRAIN_LIMIT = 'Concrete Compression Strain Limit Reached'
+STEEL_COMPRESSION_STRAIN_LIMIT = 'Steel Compression Strain Limit Reached'
+STEEL_TENSILE_STRAIN_LIMIT = 'Steel Tensile Strain Limit Reached'
+
+# Earlier spellings, kept so stored results and outside code still resolve.
+LEGACY_LIMIT_MESSAGES = {
+    'Extreme Compressive Concrete Fiber Strain Limit Reached': CONCRETE_COMPRESSION_STRAIN_LIMIT,
+    'Extreme Steel Fiber Strain Limit Reached': STEEL_TENSILE_STRAIN_LIMIT,
+}
+
+
 def try_analysis_options():
     """
     Tries different analysis algorithms and tolerances in OpenSees.
@@ -140,24 +153,24 @@ def check_analysis_limits(results, **limits):
     section_type = limits.get('section_type', 'RC')
 
     if eigenvalue_limit is not None and results.lowest_eigenvalue[-1] < eigenvalue_limit:
-        return 'Eigenvalue Limit Reached'
+        return EIGENVALUE_LIMIT
 
     if deformation_limit is not None and results.maximum_abs_disp[-1] > deformation_limit:
-            return 'Deformation Limit Reached'
+            return DEFORMATION_LIMIT
     
     if section_type == "RC":
         # For RC: Check concrete compression and steel tension
         if concrete_strain_limit is not None and results.maximum_concrete_compression_strain[-1] < concrete_strain_limit:
-            return 'Concrete Compression Strain Limit Reached'
+            return CONCRETE_COMPRESSION_STRAIN_LIMIT
         
         if steel_strain_limit is not None and results.maximum_steel_strain[-1] > steel_strain_limit:
-            return 'Steel Tensile Strain Limit Reached'
+            return STEEL_TENSILE_STRAIN_LIMIT
         
     elif section_type == "I_shape":
         # compression strains are negative; exceed limit if magnitude > steel_strain_limit
         if steel_strain_limit is not None and results.maximum_compression_strain[-1] < -steel_strain_limit:
-            return 'Steel Compression Strain Limit Reached'
+            return STEEL_COMPRESSION_STRAIN_LIMIT
         if steel_strain_limit is not None and results.maximum_tensile_strain[-1] > steel_strain_limit:
-            return 'Steel Tensile Strain Limit Reached'
+            return STEEL_TENSILE_STRAIN_LIMIT
 
     return None
