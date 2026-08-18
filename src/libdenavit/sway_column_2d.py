@@ -651,24 +651,27 @@ class SwayColumn2d(Column2d):
             iP = 0.999 * P_list[0] * (num_points - i - 1) / (num_points - 1)
             iM2_section = id2d.find_x_given_y(iP, 'pos')
 
-            EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM2_section, col=self)
-            k = self.effective_length_factor(EIeff)
-            Pc = pi ** 2 * EIeff / (k * self.length) ** 2
-
-            iM1_list = [0]
-            iM2_list = np.arange(0, iM2_section, iM2_section / 1000)
-
-            for iM2 in iM2_list:
-                EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM2, col=self)
+            trials = []
+            for iM1_trial in np.linspace(0.0, iM2_section, 1000):
+                EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM1_trial, col=self)
                 k = self.effective_length_factor(EIeff)
                 Pc = pi ** 2 * EIeff / (k * self.length) ** 2
-                if Pc_factor * Pc < iP:
-                    break
-                delta_s = max(1 / (1 - (iP) / (Pc_factor * Pc)), 1.0)
-                iM1_list.append(iM2 / delta_s)
+                if Pc_factor * Pc <= iP:
+                    # Unstable at this moment, so there is no valid magnifier. Skip
+                    # rather than stop: EIeff is not monotonic in moment for every
+                    # EI_type, so a larger moment can be stable again.
+                    continue
+                delta_s = max(1 / (1 - iP / (Pc_factor * Pc)), 1.0)
+                iM2_trial = delta_s * iM1_trial
 
-            iM1 = max(iM1_list)
-            iM2 = iM2_list[iM1_list.index(iM1) -1]
+                # The magnified moment still has to fit inside the section.
+                if iM2_trial <= iM2_section:
+                    trials.append((iM1_trial, iM2_trial))
+
+            if trials:
+                iM1, iM2 = max(trials, key=lambda trial: trial[0])
+            else:
+                iM1, iM2 = 0.0, 0.0
             P_list.append(iP)
             M1_list.append(iM1)
             M2_list.append(iM2)

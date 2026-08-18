@@ -413,9 +413,9 @@ class NonSwayColumn2d(Column2d):
                     EIeff = self.section.EIeff(self.axis, EI_type, beta_dns, P=iP, M=iM1_trial, col=self)
                     Pc = pi ** 2 * EIeff / (k * self.length) ** 2
                     if Pc_factor * Pc <= iP:
-                        # Unstable at this first-order moment; a larger moment
-                        # only softens the section further, so stop here.
-                        break
+                        # No valid magnifier at this first-order moment. Skip rather
+                        # than stop, since a custom EI need not fall monotonically with M.
+                        continue
 
                     delta = max(self.Cm / (1 - (iP) / (Pc_factor * Pc)), 1.0)
                     iM2_trial = delta * iM1_trial
