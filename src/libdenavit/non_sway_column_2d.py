@@ -8,7 +8,7 @@ import warnings
 from scipy.optimize import fsolve
 import io
 import sys
-from libdenavit.analysis_helpers import try_analysis_options, ops_get_section_strains, ops_get_maximum_abs_moment, ops_get_maximum_abs_disp, check_analysis_limits
+from libdenavit.analysis_helpers import try_analysis_options, ops_get_section_strains, ops_get_maximum_abs_moment, ops_get_maximum_abs_disp, check_analysis_limits, adapt_step_factor
 from libdenavit.column_2d import Column2d
 import logging
 
@@ -729,33 +729,30 @@ class NonSwayColumn2d(Column2d):
 
 
         maximum_applied_axial_load = 0.
-        disp_incr_factor = config['disp_incr_factor']
+        base_incr_factor = config['disp_incr_factor']
+        disp_incr_factor = base_incr_factor
         
         
         while True:
             ok = ops.analyze(1)
+            recovered_div = None
 
             if ok != 0 and config['try_smaller_steps']:
                 for div_factor in [1e1, 1e2, 1e3, 1e4, 1e5, 1e6]:
                     update_dU(disp_incr_factor, div_factor)
                     ok = ops.analyze(1)
-                    if ok == 0 and div_factor in [1e3, 1e4, 1e5, 1e6]:
-                        disp_incr_factor /= 10
-                        break
-                    elif ok == 0:
-                        break
-                    else:
+                    if ok != 0:
                         ok = try_analysis_options()
-                        if ok == 0 and div_factor in [1e3, 1e4, 1e5, 1e6]:
-                            disp_incr_factor /= 10
-                            break
-                        elif ok == 0:
-                            break
+                    if ok == 0:
+                        recovered_div = div_factor
+                        break
 
             if ok != 0 and not config['try_smaller_steps']:
                 ok = try_analysis_options()
 
             if ok == 0 and config['try_smaller_steps']:
+                disp_incr_factor = adapt_step_factor(disp_incr_factor, base_incr_factor,
+                                                     recovered_div)
                 reset_analysis_options(disp_incr_factor)
             elif ok != 0:
                 results.exit_message = 'Analysis Failed'
@@ -1012,29 +1009,26 @@ class NonSwayColumn2d(Column2d):
         ops.analyze(1)
 
         maximum_applied_axial_load = 0.
-        disp_incr_factor = config['disp_incr_factor']
+        base_incr_factor = config['disp_incr_factor']
+        disp_incr_factor = base_incr_factor
         
         while True:
             ok = ops.analyze(1)
-            
+            recovered_div = None
+
             if ok != 0 and config['try_smaller_steps']:
                 for div_factor in [1e1, 1e2, 1e3, 1e4, 1e5, 1e6]:
                     update_dU(disp_incr_factor, div_factor)
                     ok = ops.analyze(1)
-                    if ok == 0 and div_factor in [1e3, 1e4, 1e5, 1e6]:
-                        disp_incr_factor /= 10
-                        break
-                    elif ok == 0:
-                        break
-                    else:
+                    if ok != 0:
                         ok = try_analysis_options()
-                        if ok == 0 and div_factor in [1e3, 1e4, 1e5, 1e6]:
-                            disp_incr_factor /= 10
-                            break
-                        elif ok == 0:
-                            break
+                    if ok == 0:
+                        recovered_div = div_factor
+                        break
 
             if ok == 0 and config['try_smaller_steps']:
+                disp_incr_factor = adapt_step_factor(disp_incr_factor, base_incr_factor,
+                                                     recovered_div)
                 reset_analysis_options(disp_incr_factor)
 
             elif ok != 0:
@@ -1207,32 +1201,29 @@ class NonSwayColumn2d(Column2d):
         record()
         
         maximum_moment = 0
-        disp_incr_factor = config['disp_incr_factor']
+        base_incr_factor = config['disp_incr_factor']
+        disp_incr_factor = base_incr_factor
 
         while True:
             ok = ops.analyze(1)
+            recovered_div = None
 
             if ok != 0 and config['try_smaller_steps']:
                 for div_factor in [1e1, 1e2, 1e3, 1e4, 1e5, 1e6]:
                     update_dU(disp_incr_factor, div_factor)
                     ok = ops.analyze(1)
-                    if ok == 0 and div_factor in [1e3, 1e4, 1e5, 1e6]:
-                        disp_incr_factor /= 10
-                        break
-                    elif ok == 0:
-                        break
-                    else:
+                    if ok != 0:
                         ok = try_analysis_options()
-                        if ok == 0 and div_factor in [1e3, 1e4, 1e5, 1e6]:
-                            disp_incr_factor /= 10
-                            break
-                        elif ok == 0:
-                            break
+                    if ok == 0:
+                        recovered_div = div_factor
+                        break
 
             if ok != 0 and not config['try_smaller_steps']:
                 ok = try_analysis_options()
 
             if ok == 0:
+                disp_incr_factor = adapt_step_factor(disp_incr_factor, base_incr_factor,
+                                                     recovered_div)
                 reset_analysis_options(disp_incr_factor)
             elif ok != 0:
                 results.exit_message = 'Analysis Failed'

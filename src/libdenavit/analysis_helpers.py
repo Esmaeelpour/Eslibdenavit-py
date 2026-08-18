@@ -174,3 +174,29 @@ def check_analysis_limits(results, **limits):
             return STEEL_TENSILE_STRAIN_LIMIT
 
     return None
+
+
+def adapt_step_factor(step_factor, base_factor, recovered_div=None,
+                      growth=2.0, min_ratio=1e-6):
+    """
+    Step factor for the next analysis increment.
+
+    When an increment will not converge, the analysis retries it with a
+    smaller step. This decides what the increment after that should use.
+
+    - The last increment only converged after its step was divided by
+      recovered_div. Stay small, because the full step just failed and
+      retrying it would fail the same way. The step is not allowed below
+      min_ratio * base_factor, so it cannot shrink to nothing.
+    - The last increment converged on its own. Multiply the step by growth
+      so it climbs back toward base_factor, the step originally asked for,
+      and never past it.
+
+    The result is a plain multiplier, not a length or a load, so the same
+    number works for a DisplacementControl step or a LoadControl step.
+    """
+    if recovered_div:
+        return max(base_factor * min_ratio, step_factor / recovered_div)
+    return min(base_factor, step_factor * growth)
+
+
