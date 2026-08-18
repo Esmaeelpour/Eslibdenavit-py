@@ -686,7 +686,7 @@ class RC:
             P_arr, M_arr, scalar_input = self._as_load_arrays(EI_type, P, M)
             ecc_ratio = self._eccentricity_ratio(P_arr, M_arr, self.depth(axis))
             shape_factor = np.where(ecc_ratio <= 0.1, 1.0, 1.2 - 2 * ecc_ratio)
-            EI_jenkins = ((1.0 - 0.5 * P_arr / self.p0)
+            EI_jenkins = ((1.0 - 0.5 * np.abs(P_arr) / self.p0g)
                           * Ec * Ig * shape_factor / creep_factor)
             min_EI = 0.4 * Ec * Ig / creep_factor
             return self._match_load_shape(np.maximum(EI_jenkins, min_EI), scalar_input)
