@@ -95,14 +95,6 @@ class SwayColumn2d(Column2d):
             raise ValueError(f'lever_arm not implemented for k_bot = {self.k_bot} and k_top = {self.k_top}')
 
 
-    def _initialize_results(self):
-        """Initialize analysis results object with required attributes."""
-        # Get base attributes and add Sway-specific ones
-        results = super()._initialize_results()
-        # Add Sway-specific attributes
-        for attr in ['applied_horizontal_load', 'moment_at_top', 'moment_at_bottom']:
-            setattr(results, attr, [])
-        return results
 
 
     def build_ops_model(self, section_id, section_args, section_kwargs, **kwargs):
@@ -174,10 +166,6 @@ class SwayColumn2d(Column2d):
             ops.element(self.ops_element_type, index, index, index + 1, 100, 1)
 
 
-    def _set_limit_point_values(self, results, ind, x):
-        """Override to include horizontal load values."""
-        super()._set_limit_point_values(results, ind, x)
-        results.applied_horizontal_load_at_limit_point = interpolate_list(results.applied_horizontal_load, ind, x)
 
 
     def run_ops_interaction(self, **kwargs):
@@ -797,15 +785,6 @@ class SwayColumn2d(Column2d):
                 "EIgross": EIgross}
 
 
-    def _extract_analysis_config(self, **kwargs):
-        """Override to adjust default values for sway analysis."""
-        config = super()._extract_analysis_config(**kwargs)
-        # Adjust defaults for sway analysis if not explicitly provided
-        if 'num_steps_vertical' not in kwargs:
-            config['num_steps_vertical'] = 10
-        if 'disp_incr_factor' not in kwargs:
-            config['disp_incr_factor'] = 5e-05
-        return config
     
     
         
