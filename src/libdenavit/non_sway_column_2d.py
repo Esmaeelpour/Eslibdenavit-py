@@ -1563,8 +1563,11 @@ class NonSwayColumn2d(Column2d):
                         results.exit_message = 'Eigenvalue Limit Reached'
                         break
                 
-                # Skipped for axial-only loading, where there is no applied
-                # first-order moment for the ratio to be measured against.
+                # ACI 6.2.5.3: flag a column whose second-order moment has
+                # amplified past 1.4x its first-order moment. Skipped for
+                # axial-only loading, where there is no first-order moment to
+                # measure against. See _aci_first_order_moment for why M1 is
+                # floored at Mmin.
                 if max_1_4_Mu_limit is True and not (e == 0 or (abs(et) < 1e-12 and abs(eb) < 1e-12)):
                     first_order = self._aci_first_order_moment(
                         results.applied_moment_top[-1], results.applied_moment_bot[-1], P_check,
@@ -1756,7 +1759,9 @@ class NonSwayColumn2d(Column2d):
                             break
                     
                     if max_1_4_Mu_limit:
-                        # Check for 1.4 Mu limit
+                        # ACI 6.2.5.3: flag a column whose second-order moment
+                        # has amplified past 1.4x its first-order moment. See
+                        # _aci_first_order_moment for why M1 is floored at Mmin.
                         if et == 0 and eb == 0:
                             continue  # Skip for axial-only columns
                         applied_1_4_Mu = 1.4 * self._aci_first_order_moment(
