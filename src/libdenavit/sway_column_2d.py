@@ -161,6 +161,8 @@ class SwayColumn2d(Column2d):
 
         if type(self.section).__name__ == "RC":
             self.section.build_ops_fiber_section(section_id, *section_args, **section_kwargs, axis=self.axis)
+        elif type(self.section).__name__ == "I_shape":
+            self.section.build_ops_fiber_section(section_id, *section_args, **section_kwargs, axis=self.axis)
         else:
             raise ValueError(f'Unknown cross section type {type(self.section).__name__}')
 
@@ -318,8 +320,12 @@ class SwayColumn2d(Column2d):
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
             results.moment_at_top.append(ops.eleForce(self.ops_n_elem - 1, 6))
             results.moment_at_bottom.append(ops.eleForce(0, 3))
-            results.maximum_concrete_compression_strain.append(section_strains[0])
-            results.maximum_steel_strain.append(section_strains[1])
+            if type(self.section).__name__ == "RC":
+                results.maximum_concrete_compression_strain.append(section_strains[0])
+                results.maximum_steel_strain.append(section_strains[1])
+            elif type(self.section).__name__ == "I_shape":
+                results.maximum_compression_strain.append(section_strains[0])
+                results.maximum_tensile_strain.append(section_strains[1])
             if self.axis == 'x':
                 results.curvature.append(section_strains[2])
             elif self.axis == 'y':
@@ -433,8 +439,12 @@ class SwayColumn2d(Column2d):
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
             results.moment_at_top.append(ops.eleForce(self.ops_n_elem - 1, 6))
             results.moment_at_bottom.append(ops.eleForce(0, 3))
-            results.maximum_concrete_compression_strain.append(section_strains[0])
-            results.maximum_steel_strain.append(section_strains[1])
+            if type(self.section).__name__ == "RC":
+                results.maximum_concrete_compression_strain.append(section_strains[0])
+                results.maximum_steel_strain.append(section_strains[1])
+            elif type(self.section).__name__ == "I_shape":
+                results.maximum_compression_strain.append(section_strains[0])
+                results.maximum_tensile_strain.append(section_strains[1])
             if self.axis == 'x':
                 results.curvature.append(section_strains[2])
             elif self.axis == 'y':
@@ -484,8 +494,12 @@ class SwayColumn2d(Column2d):
             results.lowest_eigenvalue.append(ops.eigen('-fullGenLapack', 1)[0])
             results.moment_at_top.append(ops.eleForce(self.ops_n_elem - 1, 6))
             results.moment_at_bottom.append(ops.eleForce(0, 3))
-            results.maximum_concrete_compression_strain.append(section_strains[0])
-            results.maximum_steel_strain.append(section_strains[1])
+            if type(self.section).__name__ == "RC":
+                results.maximum_concrete_compression_strain.append(section_strains[0])
+                results.maximum_steel_strain.append(section_strains[1])
+            elif type(self.section).__name__ == "I_shape":
+                results.maximum_compression_strain.append(section_strains[0])
+                results.maximum_tensile_strain.append(section_strains[1])
             if self.axis == 'x':
                 results.curvature.append(section_strains[2])
             elif self.axis == 'y':
