@@ -84,19 +84,10 @@ class NonSwayColumn2d(Column2d):
         return 15 + 0.03 * h  # mm
 
 
-    def _aci_first_order_moment(self, M_top, M_bot, P, apply_minimum=True):
-        """
-        First-order moment for the ACI 6.2.5.3 1.4 check (M2/M1 <= 1.4).
-
-        Pass apply_minimum=False to use the raw applied moment instead.
-
-        Independent of apply_minimum_eccentricity, which changes the loading
-        itself; this only changes what M1 is measured against.
-        """
-        applied = max(abs(M_top), abs(M_bot))
-        if not apply_minimum:
-            return applied
-        return max(applied, abs(P) * self._aci_minimum_eccentricity)
+    @staticmethod
+    def _applied_first_order_moment(M_top, M_bot):
+        """Largest applied end moment, the M1 of the ACI 6.2.5.3 1.4 check."""
+        return max(abs(M_top), abs(M_bot))
 
 
     def _apply_aci_minimum_eccentricity(self, et, eb):
@@ -104,9 +95,8 @@ class NonSwayColumn2d(Column2d):
         Raise the dominant end eccentricity to the ACI 318-19 minimum.
 
         Applied once at construction when apply_minimum_eccentricity is set, so
-        it changes the loading seen by every analysis. Independent of the
-        apply_minimum_moment option of the ACI elastic analyses, which is a
-        checking and reporting basis only. See _aci_first_order_moment.
+        every analysis sees the corrected loading. This is the only place the
+        minimum eccentricity is enforced.
         """
         e_min = self._aci_minimum_eccentricity
         e_max = max(abs(et), abs(eb))
@@ -1316,7 +1306,6 @@ class NonSwayColumn2d(Column2d):
         eigenvalue_limit = kwargs.get('eigenvalue_limit', 0.0)
         deformation_limit = kwargs.get('deformation_limit', 0.1 * self.length)
         max_1_4_Mu_limit = kwargs.get('max_1_4_Mu_limit', True)
-        apply_minimum_moment = kwargs.get('apply_minimum_moment', True)
         section_factored = kwargs.get('section_factored', False)
         # ACI 318-19 (6.6.4.5.4) covers member out-of-straightness through the
         # minimum moment Mmin = Pu*(0.6 + 0.03h). This routine emulates the code
@@ -1566,12 +1555,10 @@ class NonSwayColumn2d(Column2d):
                 # ACI 6.2.5.3: flag a column whose second-order moment has
                 # amplified past 1.4x its first-order moment. Skipped for
                 # axial-only loading, where there is no first-order moment to
-                # measure against. See _aci_first_order_moment for why M1 is
-                # floored at Mmin.
+                # measure against.
                 if max_1_4_Mu_limit is True and not (e == 0 or (abs(et) < 1e-12 and abs(eb) < 1e-12)):
-                    first_order = self._aci_first_order_moment(
-                        results.applied_moment_top[-1], results.applied_moment_bot[-1], P_check,
-                        apply_minimum=apply_minimum_moment)
+                    first_order = self._applied_first_order_moment(
+                        results.applied_moment_top[-1], results.applied_moment_bot[-1])
                     if first_order > 0 and 1.4 * first_order <= results.maximum_abs_moment[-1]:
                         results.exit_message = 'max_1_4_Mu_limit_reached'
                         break
@@ -1760,13 +1747,11 @@ class NonSwayColumn2d(Column2d):
                     
                     if max_1_4_Mu_limit:
                         # ACI 6.2.5.3: flag a column whose second-order moment
-                        # has amplified past 1.4x its first-order moment. See
-                        # _aci_first_order_moment for why M1 is floored at Mmin.
+                        # has amplified past 1.4x its first-order moment.
                         if et == 0 and eb == 0:
                             continue  # Skip for axial-only columns
-                        applied_1_4_Mu = 1.4 * self._aci_first_order_moment(
-                            results.applied_moment_top[-1], results.applied_moment_bot[-1], P_check,
-                            apply_minimum=apply_minimum_moment)
+                        applied_1_4_Mu = 1.4 * self._applied_first_order_moment(
+                            results.applied_moment_top[-1], results.applied_moment_bot[-1])
                         if applied_1_4_Mu > M_check:
                             max_1_4_Mu_armed = True
                         elif max_1_4_Mu_armed:
@@ -1885,12 +1870,9 @@ class NonSwayColumn2d(Column2d):
             max_1_4_Mu_limit: Enforce the ACI 318-19 (6.2.5.3) limit that the
                               second-order moment not exceed 1.4 times the
                               first-order moment. Default True.
-            apply_minimum_moment: Measure that ratio against the minimum moment
-                              of ACI 318-19 (6.6.4.5.4), Mmin = P*(0.6+0.03h),
-                              where the applied moment is smaller, and report M1
-                              on the same basis. Default True. Set False to work
-                              from the applied moment alone, e.g. when studying
-                              eccentricities below the code minimum.
+
+        The ACI 318-19 (6.6.4.5.4) minimum eccentricity is applied to the
+        loading, by constructing the column with apply_minimum_eccentricity.
         """
         
         section_id = kwargs.get('section_id', 1)
@@ -1899,7 +1881,6 @@ class NonSwayColumn2d(Column2d):
         nonprop_disp_incr_factor = kwargs.get('nonprop_disp_incr_factor', 1e-5)
         section_factored = kwargs.get('section_factored', False)
         max_1_4_Mu_limit = kwargs.get('max_1_4_Mu_limit', True)
-        apply_minimum_moment = kwargs.get('apply_minimum_moment', True)
         e = kwargs.get('e', 1.0)
         # 1. Get Elastic Buckling Load (P_cr_elastic)
         logger.debug('Running proportional analysis for elastic buckling load...')
@@ -1909,7 +1890,6 @@ class NonSwayColumn2d(Column2d):
             section_id=section_id,
             section_factored=section_factored,
             max_1_4_Mu_limit=max_1_4_Mu_limit,
-            apply_minimum_moment=apply_minimum_moment,
             disp_incr_factor=prop_disp_incr_factor)
 
         P_cr_elastic = results_pcr.applied_axial_load_at_limit_point
@@ -1960,16 +1940,14 @@ class NonSwayColumn2d(Column2d):
                     section_id=section_id,
                     section_factored=section_factored,
                     max_1_4_Mu_limit=max_1_4_Mu_limit,
-                    apply_minimum_moment=apply_minimum_moment,
                     disp_incr_factor=nonprop_disp_incr_factor
                 )
 
                 # Record whatever we got at the limit point
                 P.append(iP)
-                M1.append(self._aci_first_order_moment(
+                M1.append(self._applied_first_order_moment(
                     results.applied_moment_top_at_limit_point,
-                    results.applied_moment_bot_at_limit_point, iP,
-                    apply_minimum=apply_minimum_moment))
+                    results.applied_moment_bot_at_limit_point))
                 M2.append(results.maximum_abs_moment_at_limit_point)
                 exit_message.append(results.exit_message)
 
