@@ -1671,14 +1671,13 @@ class NonSwayColumn2d(Column2d):
                 
                 record_stage2()
                 
-                # The 1.4Mu limit marks where the second-order moment grows to
-                # 1.4x the applied first-order moment. At the start of the
-                # lateral stage the applied moment is still zero while the
-                # second-order moment already carries P*delta from the axial
-                # stage, so the ratio starts above 1.4 and the test would trip
-                # on the first step. Only arm it once the ratio has come down
-                # below 1.4, and report the crossing on the way back up.
-                max_1_4_Mu_armed = False
+                # M2/M1 is not monotonic over this stage. The applied moment
+                # starts at zero while M2 already carries P*delta from the
+                # axial stage, so the ratio starts arbitrarily large, falls as
+                # the applied moment grows, then rises again toward failure.
+                # The ACI 6.2.5.3 limit is the crossing on the way back up, so
+                # ignore the ratio until it has been below 1.4 at least once.
+                ratio_has_been_below_limit = False
 
                 # MODIFIED: Run lateral loading with more permissive limits
                 max_moment = 0.0
@@ -1746,15 +1745,16 @@ class NonSwayColumn2d(Column2d):
                             break
                     
                     if max_1_4_Mu_limit:
-                        # ACI 6.2.5.3: flag a column whose second-order moment
-                        # has amplified past 1.4x its first-order moment.
+                        # ACI 6.2.5.3: the second-order moment must not exceed
+                        # 1.4x the first-order moment.
                         if et == 0 and eb == 0:
-                            continue  # Skip for axial-only columns
-                        applied_1_4_Mu = 1.4 * self._applied_first_order_moment(
+                            continue  # no applied moment to measure against
+                        applied_M1 = self._applied_first_order_moment(
                             results.applied_moment_top[-1], results.applied_moment_bot[-1])
-                        if applied_1_4_Mu > M_check:
-                            max_1_4_Mu_armed = True
-                        elif max_1_4_Mu_armed:
+                        over_limit = M_check >= 1.4 * applied_M1
+                        if not over_limit:
+                            ratio_has_been_below_limit = True
+                        elif ratio_has_been_below_limit:
                             results.exit_message = 'max_1_4_Mu_limit_reached'
                             break
                     
