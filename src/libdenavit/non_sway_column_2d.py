@@ -1490,7 +1490,12 @@ class NonSwayColumn2d(Column2d):
             # Run analysis
             max_applied_load = 0.0
             M_check = 0.0
-            P_check = 0.0  
+            P_check = 0.0
+            # Under proportional loading M2/M1 rises monotonically from about
+            # 1 + dxo/e, so it can start above the limit and never come back.
+            # Recording whether it was ever acceptable separates "amplified past
+            # the limit under load" from "over the limit at every load level".
+            prop_ratio_has_been_below_limit = False
             
             while True:
                 ok = ops.analyze(1)
@@ -1559,9 +1564,15 @@ class NonSwayColumn2d(Column2d):
                 if max_1_4_Mu_limit is True and not (e == 0 or (abs(et) < 1e-12 and abs(eb) < 1e-12)):
                     first_order = self._applied_first_order_moment(
                         results.applied_moment_top[-1], results.applied_moment_bot[-1])
-                    if first_order > 0 and 1.4 * first_order <= results.maximum_abs_moment[-1]:
-                        results.exit_message = 'max_1_4_Mu_limit_reached'
-                        break
+                    if first_order > 0:
+                        if 1.4 * first_order > results.maximum_abs_moment[-1]:
+                            prop_ratio_has_been_below_limit = True
+                        elif prop_ratio_has_been_below_limit:
+                            results.exit_message = 'max_1_4_Mu_limit_reached'
+                            break
+                        else:
+                            results.exit_message = 'max_1_4_Mu_limit_exceeded_at_all_loads'
+                            break
 
                 # Check deformation
                 if deformation_limit is not None:
@@ -1818,7 +1829,7 @@ class NonSwayColumn2d(Column2d):
             ind, x = find_limit_point_in_list(results.lowest_eigenvalue, eigenvalue_limit)
         elif 'Deformation' in results.exit_message:
             ind, x = find_limit_point_in_list(results.maximum_abs_disp, deformation_limit)
-        elif 'max_1_4_Mu_limit_reached' in results.exit_message:
+        elif 'max_1_4_Mu_limit' in results.exit_message:
             ind = len(results.applied_axial_load) - 2 # Go back to the point before the last
             x = 0.0
         else:
