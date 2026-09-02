@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from libdenavit.OpenSees import AnalysisResults
 from libdenavit import interpolate_list, find_limit_point_in_list
 from libdenavit.analysis_helpers import (
@@ -7,10 +7,19 @@ from libdenavit.analysis_helpers import (
 )
 import warnings
 
-class Column2d:
+class Column2d(ABC):
     """
     A base class for 2D column models.
     """
+    # Keyword arguments consumed by __init__. Subclasses extend this with their own,
+    # which lets a misspelled or unsupported argument be reported instead of silently
+    # ignored.
+    _INIT_KWARGS = frozenset({
+        'axis', 'dxo', 'include_initial_geometric_imperfections',
+        'ops_n_elem', 'ops_element_type',
+        'ops_geom_transf_type', 'ops_integration_points',
+    })
+
     def __init__(self, section, length, **kwargs):
         """
         Initializes common properties for a column.
@@ -32,6 +41,12 @@ class Column2d:
         self.dxo = kwargs.get('dxo', 0.0)
         self.include_initial_geometric_imperfections = kwargs.get('include_initial_geometric_imperfections', True)
         
+        unknown = set(kwargs) - self._INIT_KWARGS
+        if unknown:
+            warnings.warn(f'{type(self).__name__} ignoring unrecognized keyword '
+                          f'argument(s): {sorted(unknown)}')
+
+
     def _init_results(self, attrs: list) -> AnalysisResults:
         """Create an AnalysisResults with the given attribute names as empty lists."""
         results = AnalysisResults()

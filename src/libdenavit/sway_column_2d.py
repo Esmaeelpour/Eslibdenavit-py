@@ -11,7 +11,11 @@ from libdenavit.analysis_helpers import try_analysis_options, ops_get_section_st
 from libdenavit.column_2d import Column2d
 
 
-class SwayColumn2d(Column2d):   
+class SwayColumn2d(Column2d):
+
+    _INIT_KWARGS = Column2d._INIT_KWARGS | {
+        'Dxo', 'effective_length_factor_override',
+    }
     def __init__(self, section, length, k_bot, k_top, gamma, **kwargs):
         """
             Represents a sway 2D column
@@ -29,8 +33,8 @@ class SwayColumn2d(Column2d):
                           Dxo (float, optional): Lateral displacement at the top. Default is 0.0.
                           effective_length_factor_override (float or None, optional): Override for effective length factor. Default is None.
                           axis (str, optional): Axis. Default is None.
-                          n_elem (int, optional): Number of elements for OpenSees analysis. Default is 8.
-                          element_type (str, optional): Type of OpenSees element. Default is 'mixedBeamColumn'.
+                          ops_n_elem (int, optional): Number of elements for OpenSees analysis. Default is 8.
+                          ops_element_type (str, optional): Type of OpenSees element. Default is 'mixedBeamColumn'.
                           ops_geom_transf_type (str, optional): OpenSees geometric transformation type. Default is 'Corotational'.
                           ops_integration_points (int, optional): Number of integration points for OpenSees analysis. Default is 3.
         """

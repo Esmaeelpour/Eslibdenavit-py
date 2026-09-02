@@ -21,6 +21,10 @@ _LOAD_DEPENDENT_EI_TYPES = frozenset(
 
 
 class NonSwayColumn2d(Column2d):
+
+    _INIT_KWARGS = Column2d._INIT_KWARGS | {
+        'apply_minimum_eccentricity', 'creep', 'P_sus', 't_sus',
+    }
     def __init__(self, section, length, et, eb, **kwargs):
         """
             Represents a non-sway 2D column
@@ -37,8 +41,8 @@ class NonSwayColumn2d(Column2d):
                           dxo (float or None, optional): Initial geometric imperfection.
                                                          Default is 0.0. If None, then no imperfection is included.
                           axis (str, optional): Axis. Default is None.
-                          n_elem (int, optional): Number of elements for OpenSees analysis. Default is 6.
-                          element_type (str, optional): Type of OpenSees element. Default is 'mixedBeamColumn'.
+                          ops_n_elem (int, optional): Number of elements for OpenSees analysis. Default is 8.
+                          ops_element_type (str, optional): Type of OpenSees element. Default is 'mixedBeamColumn'.
                           ops_geom_transf_type (str, optional): OpenSees geometric transformation type. Default is 'Corotational'.
                           ops_integration_points (int, optional): Number of integration points for OpenSees analysis. Default is 3.
         """
